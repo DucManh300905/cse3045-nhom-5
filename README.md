@@ -18,16 +18,39 @@ Hệ thống cung cấp nền tảng kết nối giữa **khách hàng và các 
 1. An Đức Mạnh - 23110310
 2. Trương An - 23110310
 3. Lương Minh Khánh - 23110181
-## Pre-mortem: Vì sao đồ án có thể thất bại?
+## Pre-mortem – Những lý do dự án có thể thất bại
 
-Nhóm thực hiện phân tích trước các nguyên nhân có thể khiến dự án thất bại và đưa ra biện pháp phòng ngừa theo mô hình CHAOS.
+### C – Coordination (Phối hợp)
+**Rủi ro:** Các thành viên không thống nhất công việc, dẫn đến trùng lặp hoặc bỏ sót nhiệm vụ.
 
-| Nhóm | Nguyên nhân có thể xảy ra | Hành động phòng ngừa |
-|---|---|---|
-| **C - Coordination** | Các thành viên không thống nhất tiến độ và công việc | Phân chia nhiệm vụ rõ ràng, cập nhật tiến độ thường xuyên |
-| **H - Human** | Thành viên bận hoặc không hoàn thành nhiệm vụ đúng hạn | Mỗi nhiệm vụ có người phụ trách chính và người hỗ trợ |
-| **A - Architecture** | Các thành viên xây dựng chức năng không thống nhất kiến trúc | Thống nhất kiến trúc, công nghệ và quy ước code trước khi phát triển |
-| **O - Operations** | Hệ thống gặp lỗi khi triển khai trên VPS | Kiểm tra và triển khai thử nghiệm trên VPS thường xuyên |
-| **S - Scope** | Phạm vi đồ án quá lớn so với thời gian thực hiện | Xác định MVP và ưu tiên các chức năng quan trọng trước |
-| **C - Code/Collaboration** | Xảy ra xung đột khi merge code | Sử dụng branch riêng, Pull Request và review trước khi merge |
-| **H - Hosting/Hardware** | VPS gặp sự cố hoặc thiếu tài nguyên | Theo dõi tài nguyên VPS và chuẩn bị phương án backup |
+**Phòng tránh:** Phân chia nhiệm vụ rõ ràng, cập nhật tiến độ thường xuyên và thống nhất công việc trước khi triển khai.
+
+### H – Human (Con người)
+**Rủi ro:** Thành viên nghỉ hoặc không hoàn thành phần việc được giao đúng thời hạn.
+
+**Phòng tránh:** Mỗi nhiệm vụ có một người phụ trách chính và một thành viên có thể hỗ trợ khi cần.
+
+### A – Architecture (Kiến trúc)
+**Rủi ro:** Các thành viên xây dựng các phần hệ thống theo những cách khác nhau, gây khó khăn khi tích hợp.
+
+**Phòng tránh:** Thống nhất kiến trúc, cấu trúc project và quy ước code trước khi phát triển.
+
+### O – Operations (Vận hành)
+**Rủi ro:** Website gặp lỗi khi triển khai lên VPS hoặc môi trường thực tế.
+
+**Phòng tránh:** Kiểm thử việc triển khai thường xuyên và kiểm tra môi trường trước mỗi lần release.
+
+### S – Scope (Phạm vi)
+**Rủi ro:** Phạm vi dự án quá lớn so với thời gian và nguồn lực của nhóm.
+
+**Phòng tránh:** Xác định các chức năng MVP trước, ưu tiên những chức năng quan trọng và hạn chế mở rộng ngoài phạm vi.
+
+### C – Code & Collaboration (Code và cộng tác)
+**Rủi ro:** Xung đột code hoặc thành viên làm việc trên phiên bản code không đồng bộ.
+
+**Phòng tránh:** Sử dụng Git theo mô hình `main → develop → feature branch`, tạo Pull Request và review code trước khi merge.
+
+### H – Hosting & Hardware (Hosting và phần cứng)
+**Rủi ro:** VPS gặp sự cố hoặc thiếu tài nguyên khiến website không hoạt động ổn định.
+
+**Phòng tránh:** Theo dõi tài nguyên VPS, kiểm tra trạng thái dịch vụ thường xuyên và có phương án backup khi xảy ra sự cố.
