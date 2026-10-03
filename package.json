@@ -1,0 +1,27 @@
+{
+  "name": "cse3045-nhom-5",
+  "version": "1.0.0",
+  "description": "Đây là dự án xây dựng **Website bán hàng online cho các hàng ăn trên khu vực Hòa Lạc**.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DucManh300905/cse3045-nhom-5.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/DucManh300905/cse3045-nhom-5/issues"
+  },
+  "homepage": "https://github.com/DucManh300905/cse3045-nhom-5#readme",
+  "devDependencies": {
+    "jest": "^30.5.2"
+  }
+}

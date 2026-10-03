@@ -31,3 +31,8 @@ Thumbs.db
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Node.js
+/node_modules/
+**/node_modules/
+npm-debug.log*
