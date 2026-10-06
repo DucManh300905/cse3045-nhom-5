@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import type { Dish } from '../types';
+import { assetUrl } from '../api/client';
 
-/** Ảnh món; nếu ảnh lỗi thì hiện khung màu thay thế */
-export default function DishImage({ dish, className }: { dish: Dish; className?: string }) {
+/** Ảnh món; nếu không có ảnh hoặc ảnh lỗi thì hiện khung màu thay thế */
+export default function DishImage({ src, alt, className }: { src?: string; alt: string; className?: string }) {
   const [failed, setFailed] = useState(false);
-  return failed
+  return failed || !src
     ? <div className={`${className ?? ''} img-fallback`} aria-hidden />
-    : <img className={className} src={dish.image} alt={dish.name} loading="lazy" onError={() => setFailed(true)} />;
+    : <img className={className} src={assetUrl(src)} alt={alt} loading="lazy" onError={() => setFailed(true)} />;
 }

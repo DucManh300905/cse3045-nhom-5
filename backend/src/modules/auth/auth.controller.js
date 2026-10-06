@@ -1,21 +1,24 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../user/user.model');
+const AppError = require('../../utils/AppError');
+const asyncHandler = require('../../utils/asyncHandler');
+const {
+    EMAIL_REGEX,
+    PHONE_REGEX,
+    normalizeEmail,
+    normalizePhone
+} = require('../../utils/validators');
 
 // Chỉ cho phép tự đăng ký hai vai trò này. ADMIN chỉ tạo bằng script seed.
 const SELF_REGISTER_ROLES = ['CUSTOMER', 'RESTAURANT_OWNER'];
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-// Số di động Việt Nam: 10 chữ số, bắt đầu bằng 0
-const PHONE_REGEX = /^0\d{9}$/;
 
-const normalizeEmail = (email) =>
-    typeof email === 'string' ? email.trim().toLowerCase() : '';
-
-// Bỏ khoảng trắng, dấu chấm, gạch nối; đổi +84 thành 0
-const normalizePhone = (phone) =>
-    typeof phone === 'string'
-        ? phone.replace(/[\s.-]/g, '').replace(/^\+84/, '0')
-        : '';
+const signToken = (user) =>
+    jwt.sign(
+        { userId: user._id, role: user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: '1d' }
+    );
 
 const toUserResponse = (user) => ({
     id: user._id,
@@ -163,11 +166,7 @@ const login = async (req, res) => {
             });
         }
 
-        const token = jwt.sign(
-            { userId: user._id, role: user.role },
-            process.env.JWT_SECRET,
-            { expiresIn: '1d' }
-        );
+        const token = signToken(user);
 
         return res.status(200).json({
             success: true,
@@ -187,7 +186,37 @@ const login = async (req, res) => {
     }
 };
 
+// PUT /auth/change-password — validate ở auth.routes.js
+// Sai mật khẩu hiện tại trả 400 (không phải 401) để FE không tự đăng xuất.
+const changePassword = asyncHandler(async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+
+    const user = await User.findById(req.user.userId);
+
+    if (!(await bcrypt.compare(currentPassword, user.password))) {
+        throw new AppError(400, 'INVALID_PASSWORD', 'Current password is incorrect');
+    }
+
+    if (currentPassword === newPassword) {
+        throw new AppError(400, 'VALIDATION_ERROR', 'New password must be different from current password');
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    // Token cấp trước thời điểm này sẽ bị authenticate từ chối
+    user.passwordChangedAt = new Date();
+    await user.save();
+
+    return res.status(200).json({
+        success: true,
+        message: 'Password changed successfully',
+        data: {
+            token: signToken(user)
+        }
+    });
+});
+
 module.exports = {
     register,
-    login
+    login,
+    changePassword
 };

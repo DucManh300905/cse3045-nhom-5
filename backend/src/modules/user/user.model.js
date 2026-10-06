@@ -1,5 +1,50 @@
 const mongoose = require('mongoose');
 
+const MAX_ADDRESSES = 5;
+
+// Địa chỉ giao hàng của khách (docs/database.md mục 3.1)
+const addressSchema = new mongoose.Schema({
+    label: {
+        type: String,
+        trim: true
+    },
+
+    receiverName: {
+        type: String,
+        required: true,
+        trim: true
+    },
+
+    phone: {
+        type: String,
+        required: true,
+        trim: true
+    },
+
+    addressLine: {
+        type: String,
+        required: true,
+        trim: true
+    },
+
+    // GeoJSON: coordinates = [lng, lat]
+    location: {
+        type: {
+            type: String,
+            enum: ['Point']
+        },
+        coordinates: {
+            type: [Number],
+            default: undefined
+        }
+    },
+
+    isDefault: {
+        type: Boolean,
+        default: false
+    }
+});
+
 const userSchema = new mongoose.Schema(
     {
         // Người dùng đăng ký bằng email hoặc số điện thoại (ít nhất một trong hai).
@@ -41,6 +86,24 @@ const userSchema = new mongoose.Schema(
             type: String,
             enum: ['ACTIVE', 'BLOCKED'],
             default: 'ACTIVE'
+        },
+
+        avatarUrl: {
+            type: String,
+            trim: true
+        },
+
+        addresses: {
+            type: [addressSchema],
+            validate: {
+                validator: (list) => list.length <= MAX_ADDRESSES,
+                message: `At most ${MAX_ADDRESSES} addresses`
+            }
+        },
+
+        // Token cấp trước thời điểm này bị coi là hết hạn
+        passwordChangedAt: {
+            type: Date
         }
     },
     {
@@ -57,3 +120,4 @@ userSchema.pre('validate', function () {
 const User = mongoose.model('User', userSchema);
 
 module.exports = User;
+module.exports.MAX_ADDRESSES = MAX_ADDRESSES;

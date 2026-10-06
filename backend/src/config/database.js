@@ -19,6 +19,16 @@ const connectDatabase = async () => {
         console.warn('Sync indexes failed:', error.message);
     }
 
+    // Đặt đơn dùng transaction (BR-34) -> MongoDB phải chạy dạng replica set (Atlas có sẵn).
+    // MongoDB cài trên máy mặc định là standalone: báo ngay thay vì để khách gặp lỗi 500 khi đặt món.
+    const hello = await mongoose.connection.db.admin().command({ hello: 1 }).catch(() => ({}));
+    if (!hello.setName && hello.msg !== 'isdbgrid') {
+        console.warn(
+            'Warning: MongoDB is standalone (not a replica set) -> placing orders will FAIL (transactions unsupported).\n' +
+                '         Fix: add "replication: replSetName: rs0" to mongod.cfg, restart MongoDB, then run: npm run db:init-replset'
+        );
+    }
+
     // Index không tạo được (vd: dữ liệu cũ trùng số điện thoại) thì báo để xử lý
     const indexes = await mongoose.connection.collection('users').indexes().catch(() => []);
     if (!indexes.some((index) => index.key.phone)) {

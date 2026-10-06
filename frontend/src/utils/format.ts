@@ -12,4 +12,4 @@ export const PHONE_REGEX = /^0\d{9}$/;
 
 /** Bỏ dấu tiếng Việt để tìm kiếm "com ga" vẫn ra "Cơm gà" */
 export const normalizeText = (s: string) =>
-  s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().trim();
+  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().trim();

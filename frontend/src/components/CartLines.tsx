@@ -8,17 +8,23 @@ export default function CartLines() {
   const { lines, change } = useCart();
   return (
     <ul className="cart-lines">
-      {lines.map(({ dish, qty }) => (
-        <li key={dish.id} className="cart-line">
-          <DishImage dish={dish} className="cart-thumb" />
-          <div className="cart-line-info">
-            <b>{dish.name}</b>
-            <small>{dish.shop} · {formatPrice(dish.price)}</small>
-            <QtyStepper qty={qty} max={dish.stock} onChange={d => change(dish.id, d)} label={dish.name} />
-          </div>
-          <strong>{formatPrice(dish.price * qty)}</strong>
-        </li>
-      ))}
+      {lines.map(l => {
+        const extras = [l.variantName && `Size ${l.variantName}`, ...l.optionNames].filter(Boolean).join(', ');
+        // Suất còn lại tính chung cho mọi dòng của cùng món
+        const others = lines.reduce((s, o) => (o.menuItemId === l.menuItemId && o.key !== l.key ? s + o.qty : s), 0);
+        return (
+          <li key={l.key} className="cart-line">
+            <DishImage src={l.imageUrl} alt={l.name} className="cart-thumb" />
+            <div className="cart-line-info">
+              <b>{l.name}</b>
+              {extras && <small className="cart-line-extras">{extras}</small>}
+              <small>{formatPrice(l.unitPrice)}</small>
+              <QtyStepper qty={l.qty} max={l.maxQty === null ? null : l.maxQty - others} onChange={d => change(l.key, d)} label={l.name} />
+            </div>
+            <strong>{formatPrice(l.unitPrice * l.qty)}</strong>
+          </li>
+        );
+      })}
     </ul>
   );
 }
