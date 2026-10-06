@@ -10,7 +10,7 @@ interface Props {
 }
 
 export default function CartDrawer({ open, onClose, onCheckout }: Props) {
-  const { lines, count, subtotal, clear } = useCart();
+  const { restaurant, lines, count, subtotal, clear } = useCart();
 
   // Khóa cuộn trang + đóng bằng phím Esc khi đang mở
   useEffect(() => {
@@ -31,7 +31,7 @@ export default function CartDrawer({ open, onClose, onCheckout }: Props) {
         <div className="drawer-head">
           <div>
             <h2>Giỏ hàng của bạn</h2>
-            <small>{count ? `${count} món đã chọn` : 'Chưa có món nào'}</small>
+            <small>{count && restaurant ? `${count} món · ${restaurant.name}` : 'Chưa có món nào'}</small>
           </div>
           <button className="btn-outline" onClick={onClose}>Đóng</button>
         </div>
@@ -55,7 +55,7 @@ export default function CartDrawer({ open, onClose, onCheckout }: Props) {
             <span>Tạm tính</span>
             <strong>{formatPrice(subtotal)}</strong>
           </div>
-          <p className="hint">Phí giao do quán cấu hình, bạn sẽ xem tổng tiền trước khi đặt.</p>
+          <p className="hint">Mỗi đơn đặt món của một quán. Quán tự giao, miễn phí giao hàng.</p>
           <button className="btn-primary wide" disabled={!lines.length} onClick={onCheckout}>
             Xác nhận đặt món
           </button>

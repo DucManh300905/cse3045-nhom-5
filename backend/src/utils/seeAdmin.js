@@ -12,6 +12,12 @@ const User = require('../modules/user/user.model');
     const exists = await User.findOne({ email });
 
     if (exists) {
+        // Email là duy nhất: đã thuộc tài khoản khách / chủ quán thì không dùng làm admin được
+        if (exists.role !== 'ADMIN') {
+            console.error(`Email ${email} is already used by a ${exists.role} account — set another ADMIN_EMAIL in .env`);
+            process.exit(1);
+        }
+
         console.log('Admin already exists:', email);
         process.exit(0);
     }

@@ -39,3 +39,5 @@ npm-debug.log*
 
 HW1/
 HW3/
+# File upload (ảnh quán, giấy tờ pháp lý)
+backend/uploads/

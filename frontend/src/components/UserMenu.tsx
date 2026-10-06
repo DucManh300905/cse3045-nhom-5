@@ -33,7 +33,16 @@ export default function UserMenu() {
             <b>{user.fullName}</b>
             <small>{user.email || user.phone}</small>
           </div>
-          <button onClick={() => { setOpen(false); navigate('/orders'); }}>Đơn của tôi</button>
+          {user.role === 'RESTAURANT_OWNER' ? (
+            <button onClick={() => { setOpen(false); navigate('/owner'); }}>Kênh chủ quán</button>
+          ) : user.role === 'ADMIN' ? (
+            <button onClick={() => { setOpen(false); navigate('/admin'); }}>Trang quản trị</button>
+          ) : (
+            <>
+              <button onClick={() => { setOpen(false); navigate('/orders'); }}>Đơn của tôi</button>
+              <button onClick={() => { setOpen(false); navigate('/account'); }}>Tài khoản & sổ địa chỉ</button>
+            </>
+          )}
           <button onClick={() => { setOpen(false); logout(); notify('Đã đăng xuất'); navigate('/menu'); }}>Đăng xuất</button>
         </div>
       )}

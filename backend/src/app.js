@@ -1,9 +1,19 @@
+// Phải nạp trước các route (route require model) để plugin toJSON áp dụng cho mọi schema
+require('./config/mongoose');
+
 const express = require('express');
 const cors = require('cors');
 
+const { notFound, errorHandler } = require('./middlewares/error.middleware');
 const authRoutes = require('./modules/auth/auth.routes');
 const userRoutes = require('./modules/user/user.routes');
-const restaurantRoutes = require('./modules/restaurant/restaurant.routes');
+const merchantRestaurantRoutes = require('./modules/restaurant/restaurant.merchant.routes');
+const adminRoutes = require('./modules/admin/admin.routes');
+const { categoryRouter, menuItemRouter } = require('./modules/menu/menu.merchant.routes');
+const publicRoutes = require('./modules/public.routes');
+const orderRoutes = require('./modules/order/order.routes');
+const merchantOrderRoutes = require('./modules/order/order.merchant.routes');
+const { PUBLIC_DIR, PUBLIC_URL_PREFIX } = require('./config/storage');
 
 const app = express();
 
@@ -14,6 +24,9 @@ app.use(
 );
 app.use(express.json());
 
+// Ảnh quán/món (giấy tờ pháp lý nằm ở thư mục private, không public)
+app.use(PUBLIC_URL_PREFIX, express.static(PUBLIC_DIR));
+
 app.get('/api/health', (req, res) => {
     res.json({
         success: true,
@@ -23,23 +36,22 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/restaurants', restaurantRoutes);
+// Khách xem quán và món (không cần đăng nhập)
+app.use('/api/restaurants', publicRoutes.restaurantRouter);
+app.use('/api/menu-items', publicRoutes.menuItemRouter);
+// Chủ quán quản lý quán của mình (trước đây là /api/restaurants/my-restaurant)
+// Đơn của khách
+app.use('/api/orders', orderRoutes);
+app.use('/api/merchant/restaurant', merchantRestaurantRoutes);
+app.use('/api/merchant/categories', categoryRouter);
+app.use('/api/merchant/menu-items', menuItemRouter);
+app.use('/api/merchant/orders', merchantOrderRoutes);
+app.use('/api/admin', adminRoutes);
 
 // 404 cho route không tồn tại
-app.use((req, res) => {
-    res.status(404).json({
-        success: false,
-        message: 'Route not found'
-    });
-});
+app.use(notFound);
 
 // Xử lý lỗi chung (phải đặt cuối cùng)
-app.use((err, req, res, next) => {
-    console.error(err);
-    res.status(err.status || 500).json({
-        success: false,
-        message: err.status ? err.message : 'Internal server error'
-    });
-});
+app.use(errorHandler);
 
 module.exports = app;

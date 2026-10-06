@@ -4,16 +4,38 @@ import { getErrorMessage } from '../api/client';
 import { LogoMark } from '../components/Logo';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import type { Role } from '../types';
 import { EMAIL_REGEX, PHONE_REGEX } from '../utils/format';
 
 type Mode = 'login' | 'register';
 type Method = 'email' | 'phone';
 
-export default function AuthPage() {
+/** Khách hàng (/login), chủ quán (/owner/login), quản trị (/admin/login) — cùng form, khác vai trò */
+const PORTALS = {
+  customer: {
+    role: 'CUSTOMER' as Role, home: '/menu', back: { to: '/menu', label: '← Quay lại thực đơn' },
+    registerTitle: 'Tạo tài khoản khách hàng', wrongRole: 'Tài khoản này không phải tài khoản khách hàng.',
+    loginTitle: 'Chào bạn quay lại', canRegister: true,
+  },
+  owner: {
+    role: 'RESTAURANT_OWNER' as Role, home: '/owner', back: { to: '/', label: '← Về trang chủ' },
+    registerTitle: 'Tạo tài khoản chủ quán', wrongRole: 'Tài khoản này không phải tài khoản chủ quán.',
+    loginTitle: 'Kênh chủ quán', canRegister: true,
+  },
+  // Tài khoản admin tạo bằng `npm run seed:admin`, không tự đăng ký được
+  admin: {
+    role: 'ADMIN' as Role, home: '/admin', back: { to: '/', label: '← Về trang chủ' },
+    registerTitle: '', wrongRole: 'Tài khoản này không phải tài khoản quản trị viên.',
+    loginTitle: 'Trang quản trị', canRegister: false,
+  },
+};
+
+export default function AuthPage({ portal = 'customer' }: { portal?: keyof typeof PORTALS }) {
+  const cfg = PORTALS[portal];
   const { user, loading, login, register, logout } = useAuth();
   const notify = useToast();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from || '/menu';
+  const from = (location.state as { from?: string } | null)?.from || cfg.home;
 
   const [mode, setMode] = useState<Mode>('login');
   const [error, setError] = useState('');
@@ -29,16 +51,16 @@ export default function AuthPage() {
   const setField = (k: keyof typeof reg, v: string) => setReg(r => ({ ...r, [k]: v }));
 
   if (loading) return <div className="page-loading">Đang tải...</div>;
-  if (user?.role === 'CUSTOMER') return <Navigate to={from} replace />;
+  if (user?.role === cfg.role) return <Navigate to={from} replace />;
 
   const switchMode = (m: Mode) => { setMode(m); setError(''); };
 
-  /** Đăng nhập rồi kiểm tra đúng là tài khoản khách hàng */
+  /** Đăng nhập rồi kiểm tra đúng vai trò của cổng này */
   const signIn = async (id: string, pw: string) => {
     const u = await login(id, pw);
-    if (u.role !== 'CUSTOMER') {
+    if (u.role !== cfg.role) {
       logout();
-      throw new Error('Tài khoản này không phải tài khoản khách hàng.');
+      throw new Error(cfg.wrongRole);
     }
     return u;
   };
@@ -74,9 +96,9 @@ export default function AuthPage() {
     setSubmitting(true);
     try {
       const contact = method === 'email' ? { email } : { phone };
-      await register({ fullName, password: reg.password, ...contact });
+      await register({ fullName, password: reg.password, role: cfg.role as 'CUSTOMER' | 'RESTAURANT_OWNER', ...contact });
       await signIn(method === 'email' ? email : phone, reg.password); // đăng nhập luôn sau khi đăng ký
-      notify('Tạo tài khoản thành công. Chào mừng bạn đến MAK!');
+      notify(portal === 'owner' ? 'Tạo tài khoản thành công. Hãy tạo hồ sơ quán của bạn!' : 'Tạo tài khoản thành công. Chào mừng bạn đến MAK!');
     } catch (err) {
       setError(getErrorMessage(err));
       setSubmitting(false);
@@ -91,14 +113,14 @@ export default function AuthPage() {
         </Link>
 
         <section className="auth-form-side">
-          <div className="tabs" role="tablist">
+          {cfg.canRegister && <div className="tabs" role="tablist">
             <button role="tab" aria-selected={mode === 'login'} className={mode === 'login' ? 'active' : ''} onClick={() => switchMode('login')}>Đăng nhập</button>
             <button role="tab" aria-selected={mode === 'register'} className={mode === 'register' ? 'active' : ''} onClick={() => switchMode('register')}>Tạo tài khoản</button>
-          </div>
+          </div>}
 
           {mode === 'login' ? (
             <form className="auth-form" onSubmit={submitLogin} noValidate>
-              <h1>Chào bạn quay lại</h1>
+              <h1>{cfg.loginTitle}</h1>
               {from === '/checkout' && <p className="auth-hint">Đăng nhập để hoàn tất đơn hàng của bạn.</p>}
               <label>
                 <span>Email hoặc số điện thoại</span>
@@ -112,11 +134,11 @@ export default function AuthPage() {
               <button className="btn-primary wide" type="submit" disabled={submitting}>
                 {submitting ? 'Đang đăng nhập...' : 'Đăng nhập →'}
               </button>
-              <p className="auth-switch">Chưa có tài khoản? <button type="button" onClick={() => switchMode('register')}>Tạo tài khoản</button></p>
+              {cfg.canRegister && <p className="auth-switch">Chưa có tài khoản? <button type="button" onClick={() => switchMode('register')}>Tạo tài khoản</button></p>}
             </form>
           ) : (
             <form className="auth-form" onSubmit={submitRegister} noValidate>
-              <h1>Tạo tài khoản khách hàng</h1>
+              <h1>{cfg.registerTitle}</h1>
               <label>
                 <span>Họ và tên</span>
                 <input value={reg.fullName} onChange={e => setField('fullName', e.target.value)} placeholder="Nguyễn Văn A" autoComplete="name" autoFocus />
@@ -161,7 +183,7 @@ export default function AuthPage() {
             </form>
           )}
 
-          <Link to="/menu" className="back-link">← Quay lại thực đơn</Link>
+          <Link to={cfg.back.to} className="back-link">{cfg.back.label}</Link>
         </section>
       </div>
 
