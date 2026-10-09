@@ -5,6 +5,7 @@ import { menuApi, type MenuItemQuery } from '../api/menu';
 import AppHeader from '../components/AppHeader';
 import CartDrawer from '../components/CartDrawer';
 import FoodCard from '../components/FoodCard';
+import RestaurantCard from '../components/RestaurantCard';
 import ItemOptionsModal from '../components/ItemOptionsModal';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
@@ -21,6 +22,9 @@ const CATEGORIES: { value: Category; label: string }[] = [
   { value: 'DRINK', label: 'Đồ uống' },
 ];
 const PAGE_SIZE = 24;
+const MIN_TOP_RATING = 4;
+/** Số thẻ quán hiện trước khi bấm "Xem tất cả" */
+const SHOPS_PREVIEW = 6;
 
 /** Giá trị trễ một nhịp, để không gọi API sau mỗi phím gõ */
 function useDebounced<T>(value: T, ms = 300) {
@@ -46,6 +50,9 @@ export default function MenuPage() {
   const [shop, setShop] = useState('ALL');
   const [sort, setSort] = useState<Sort>('popular');
   const [inStockOnly, setInStockOnly] = useState(false);
+  /** Chỉ quán (và món của quán) từ 4★ trở lên */
+  const [topRated, setTopRated] = useState(false);
+  const [showAllShops, setShowAllShops] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const closeCart = useCallback(() => setCartOpen(false), []);
   const [choosing, setChoosing] = useState<{ item: MenuItem; restaurant: RestaurantSummary } | null>(null);
@@ -58,11 +65,12 @@ export default function MenuPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Quán xếp theo điểm đánh giá có trọng số (server); quán đang nhận đơn lên trước
   useEffect(() => {
-    menuApi.listRestaurants({ limit: 100, sort: 'name' })
-      .then(r => setRestaurants(r.items))
+    menuApi.listRestaurants({ limit: 100, sort: 'rating', minRating: topRated ? MIN_TOP_RATING : undefined })
+      .then(r => setRestaurants([...r.items].sort((a, b) => Number(b.canAcceptOrders) - Number(a.canAcceptOrders))))
       .catch(() => setRestaurants([]));
-  }, []);
+  }, [topRated]);
 
   // Đổi bộ lọc -> tải lại từ trang 1; "Xem thêm" -> nối trang tiếp theo
   const filters = useMemo<MenuItemQuery>(() => ({
@@ -70,9 +78,10 @@ export default function MenuPage() {
     type: category === 'ALL' ? undefined : category,
     restaurant: shop === 'ALL' ? undefined : shop,
     inStock: inStockOnly,
+    minRating: topRated ? MIN_TOP_RATING : undefined,
     sort,
     limit: PAGE_SIZE,
-  }), [debouncedQuery, category, shop, inStockOnly, sort]);
+  }), [debouncedQuery, category, shop, inStockOnly, topRated, sort]);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -103,12 +112,13 @@ export default function MenuPage() {
     setParams(next, { replace: true });
   };
 
-  const filtered = query || category !== 'ALL' || shop !== 'ALL' || inStockOnly;
+  const filtered = query || category !== 'ALL' || shop !== 'ALL' || inStockOnly || topRated;
   const resetFilters = () => {
     setQuery('');
     setCategory('ALL');
     setShop('ALL');
     setInStockOnly(false);
+    setTopRated(false);
   };
 
   // Chưa đăng nhập -> chuyển sang trang đăng nhập, xong quay lại trang đặt món
@@ -137,6 +147,26 @@ export default function MenuPage() {
           </div>
         </section>
 
+        {/* Các quán: bấm vào xem toàn bộ món của quán (ẩn khi đang tìm món) */}
+        {!debouncedQuery && restaurants.length > 0 && (
+          <section className="shops-section" aria-label="Các quán">
+            <div className="section-head">
+              <h2>{topRated ? `Quán từ ${MIN_TOP_RATING}★ trở lên` : 'Các quán'}</h2>
+              {restaurants.length > SHOPS_PREVIEW && (
+                <button className="link-btn" onClick={() => setShowAllShops(v => !v)}>
+                  {showAllShops ? 'Thu gọn' : `Xem tất cả ${restaurants.length} quán`}
+                </button>
+              )}
+            </div>
+            <div className="shop-grid">
+              {(showAllShops ? restaurants : restaurants.slice(0, SHOPS_PREVIEW)).map(r => <RestaurantCard key={r.id} restaurant={r} />)}
+            </div>
+          </section>
+        )}
+        {topRated && restaurants.length === 0 && (
+          <p className="page-lead">Chưa có quán nào đạt từ {MIN_TOP_RATING}★. Tắt bộ lọc để xem tất cả quán.</p>
+        )}
+
         <section className="toolbar" aria-label="Bộ lọc">
           <div className="cat-tabs" role="tablist">
             {CATEGORIES.map(c => (
@@ -157,6 +187,11 @@ export default function MenuPage() {
               <input type="checkbox" checked={inStockOnly} onChange={e => setInStockOnly(e.target.checked)} />
               <span className="switch-track" aria-hidden />
               <span>Chỉ món còn hàng</span>
+            </label>
+            <label className="switch">
+              <input type="checkbox" checked={topRated} onChange={e => { setTopRated(e.target.checked); setShop('ALL'); }} />
+              <span className="switch-track" aria-hidden />
+              <span>Từ {MIN_TOP_RATING}★</span>
             </label>
             <label className="sort">
               <span className="sr-only">Sắp xếp</span>

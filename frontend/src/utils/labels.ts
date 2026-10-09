@@ -24,6 +24,10 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   RESTAURANT_UNBLOCK: 'Mở khóa quán',
   RESTAURANT_COMMISSION_CHANGE: 'Đổi hoa hồng',
   MENU_PRICE_CHANGE: 'Đổi giá món',
+  REVIEW_HIDE: 'Ẩn đánh giá',
+  REVIEW_UNHIDE: 'Hiện lại đánh giá',
+  USER_BLOCK: 'Khóa tài khoản',
+  USER_UNBLOCK: 'Mở khóa tài khoản',
 };
 
 /** {status: 'SUBMITTED'} -> {status: 'APPROVED'} thành chuỗi ngắn gọn để hiển thị */

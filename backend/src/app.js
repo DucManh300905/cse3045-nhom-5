@@ -3,6 +3,7 @@ require('./config/mongoose');
 
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 
 const { notFound, errorHandler } = require('./middlewares/error.middleware');
 const authRoutes = require('./modules/auth/auth.routes');
@@ -13,16 +14,27 @@ const { categoryRouter, menuItemRouter } = require('./modules/menu/menu.merchant
 const publicRoutes = require('./modules/public.routes');
 const orderRoutes = require('./modules/order/order.routes');
 const merchantOrderRoutes = require('./modules/order/order.merchant.routes');
+const notificationRoutes = require('./modules/notification/notification.routes');
+const merchantReviewRoutes = require('./modules/review/review.merchant.routes');
+const merchantReportRoutes = require('./modules/report/report.merchant.routes');
 const { PUBLIC_DIR, PUBLIC_URL_PREFIX } = require('./config/storage');
 
 const app = express();
+
+// Chạy sau nginx / Cloudflare: TRUST_PROXY=1 để lấy đúng IP người dùng (rate limit theo IP)
+app.set('trust proxy', Number(process.env.TRUST_PROXY) || false);
+
+// Header bảo mật: nosniff, chống nhúng iframe, HSTS... Ảnh /uploads cho phép trang khác origin
+// (frontend dev chạy ở cổng 5173) hiển thị.
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
 app.use(
     cors({
         origin: process.env.CLIENT_URL || 'http://localhost:5173'
     })
 );
-app.use(express.json());
+// Giới hạn body JSON để chặn request khổng lồ
+app.use(express.json({ limit: '100kb' }));
 
 // Ảnh quán/món (giấy tờ pháp lý nằm ở thư mục private, không public)
 app.use(PUBLIC_URL_PREFIX, express.static(PUBLIC_DIR));
@@ -42,10 +54,14 @@ app.use('/api/menu-items', publicRoutes.menuItemRouter);
 // Chủ quán quản lý quán của mình (trước đây là /api/restaurants/my-restaurant)
 // Đơn của khách
 app.use('/api/orders', orderRoutes);
+// Thông báo trong app (mọi vai trò)
+app.use('/api/notifications', notificationRoutes);
 app.use('/api/merchant/restaurant', merchantRestaurantRoutes);
 app.use('/api/merchant/categories', categoryRouter);
 app.use('/api/merchant/menu-items', menuItemRouter);
 app.use('/api/merchant/orders', merchantOrderRoutes);
+app.use('/api/merchant/reviews', merchantReviewRoutes);
+app.use('/api/merchant/reports', merchantReportRoutes);
 app.use('/api/admin', adminRoutes);
 
 // 404 cho route không tồn tại

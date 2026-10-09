@@ -5,13 +5,19 @@ const { setupDatabase } = require('../helpers/db');
 
 setupDatabase();
 
-const register = (body) => request(app).post('/api/auth/register').send(body);
+const { issueVerificationToken } = require('../../src/modules/auth/otp.service');
+
+// Email hợp lệ thì kèm sẵn vé OTP (đăng ký bằng email bắt buộc xác thực — xem otp.test.js)
+const register = (body) =>
+    request(app)
+        .post('/api/auth/register')
+        .send(typeof body.email === 'string' ? { verificationToken: issueVerificationToken(body.email.trim().toLowerCase()), ...body } : body);
 const login = (body) => request(app).post('/api/auth/login').send(body);
 
 const validUser = {
     fullName: 'Nguyễn Văn A',
     email: 'a@gmail.com',
-    password: '123456'
+    password: 'Test@1234'
 };
 
 describe('POST /api/auth/register', () => {
@@ -30,7 +36,7 @@ describe('POST /api/auth/register', () => {
     });
 
     test('đăng ký bằng SĐT, chuẩn hóa +84 thành 0 (BR-02)', async () => {
-        const res = await register({ fullName: 'B', phone: '+84 912.345.678', password: '123456' });
+        const res = await register({ fullName: 'B', phone: '+84 912.345.678', password: 'Test@1234' });
 
         expect(res.status).toBe(201);
         expect(res.body.data.phone).toBe('0912345678');
@@ -51,11 +57,12 @@ describe('POST /api/auth/register', () => {
     });
 
     test.each([
-        ['thiếu cả email và SĐT', { fullName: 'A', password: '123456' }],
-        ['thiếu fullName', { email: 'a@gmail.com', password: '123456' }],
+        ['thiếu cả email và SĐT', { fullName: 'A', password: 'Test@1234' }],
+        ['thiếu fullName', { email: 'a@gmail.com', password: 'Test@1234' }],
         ['email sai định dạng', { ...validUser, email: 'abc' }],
-        ['SĐT sai định dạng', { fullName: 'A', phone: '12345', password: '123456' }],
-        ['mật khẩu < 6 ký tự', { ...validUser, password: '123' }]
+        ['SĐT sai định dạng', { fullName: 'A', phone: '12345', password: 'Test@1234' }],
+        ['mật khẩu < 8 ký tự', { ...validUser, password: 'Abc@123' }],
+        ['mật khẩu quá phổ biến', { ...validUser, password: '12345678' }]
     ])('400 khi %s (BR-01)', async (_, body) => {
         const res = await register(body);
 
@@ -73,9 +80,9 @@ describe('POST /api/auth/register', () => {
     });
 
     test('409 khi SĐT đã tồn tại', async () => {
-        await register({ fullName: 'A', phone: '0912345678', password: '123456' }).expect(201);
+        await register({ fullName: 'A', phone: '0912345678', password: 'Test@1234' }).expect(201);
 
-        const res = await register({ fullName: 'B', phone: '0912345678', password: '123456' });
+        const res = await register({ fullName: 'B', phone: '0912345678', password: 'Test@1234' });
 
         expect(res.status).toBe(409);
         expect(res.body.message).toBe('Phone already exists');
@@ -88,7 +95,7 @@ describe('POST /api/auth/login', () => {
     });
 
     test('đăng nhập bằng email trả về token', async () => {
-        const res = await login({ identifier: 'a@gmail.com', password: '123456' });
+        const res = await login({ identifier: 'a@gmail.com', password: 'Test@1234' });
 
         expect(res.status).toBe(200);
         expect(res.body.data.token).toEqual(expect.any(String));
@@ -96,13 +103,13 @@ describe('POST /api/auth/login', () => {
     });
 
     test('đăng nhập bằng SĐT', async () => {
-        const res = await login({ identifier: '0912 345 678', password: '123456' });
+        const res = await login({ identifier: '0912 345 678', password: 'Test@1234' });
 
         expect(res.status).toBe(200);
     });
 
     test('vẫn nhận field email cũ để tương thích', async () => {
-        const res = await login({ email: 'a@gmail.com', password: '123456' });
+        const res = await login({ email: 'a@gmail.com', password: 'Test@1234' });
 
         expect(res.status).toBe(200);
     });
@@ -114,7 +121,7 @@ describe('POST /api/auth/login', () => {
     });
 
     test('401 khi tài khoản không tồn tại', async () => {
-        const res = await login({ identifier: 'x@gmail.com', password: '123456' });
+        const res = await login({ identifier: 'x@gmail.com', password: 'Test@1234' });
 
         expect(res.status).toBe(401);
     });
@@ -122,7 +129,7 @@ describe('POST /api/auth/login', () => {
     test('403 khi tài khoản bị khóa (BR-04)', async () => {
         await User.updateOne({ email: 'a@gmail.com' }, { status: 'BLOCKED' });
 
-        const res = await login({ identifier: 'a@gmail.com', password: '123456' });
+        const res = await login({ identifier: 'a@gmail.com', password: 'Test@1234' });
 
         expect(res.status).toBe(403);
     });

@@ -1,6 +1,9 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../user/user.model');
+const { passwordError } = require('../../utils/passwordPolicy');
+const { sendRegisterOtp, verifyRegisterOtp, isVerifiedEmail, sendResetOtp, consumeOtp } = require('./otp.service');
+const mailer = require('../../config/mailer');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
 const {
@@ -61,10 +64,12 @@ const register = async (req, res) => {
             });
         }
 
-        if (typeof password !== 'string' || password.length < 6) {
+        const invalidPassword = passwordError(password);
+        if (invalidPassword) {
             return res.status(400).json({
                 success: false,
-                message: 'Password must be at least 6 characters'
+                message: invalidPassword,
+                code: 'VALIDATION_ERROR'
             });
         }
 
@@ -72,6 +77,15 @@ const register = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: 'Invalid role'
+            });
+        }
+
+        // Đăng ký bằng email phải xác thực OTP trước (POST /auth/otp/send + /auth/otp/verify)
+        if (email && !isVerifiedEmail(req.body.verificationToken, email)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email must be verified with an OTP code first',
+                code: 'OTP_REQUIRED'
             });
         }
 
@@ -97,7 +111,8 @@ const register = async (req, res) => {
             phone: phone || undefined,
             password: hashedPassword,
             fullName,
-            role
+            role,
+            emailVerified: Boolean(email)
         });
 
         return res.status(201).json({
@@ -215,7 +230,65 @@ const changePassword = asyncHandler(async (req, res) => {
     });
 });
 
+// POST /auth/otp/send { email } — gửi mã 6 số (hết hạn 5 phút, gửi lại sau 60 giây, tối đa 5 mã / giờ)
+const sendOtp = asyncHandler(async (req, res) => {
+    const result = await sendRegisterOtp(normalizeEmail(req.body.email));
+
+    return res.status(200).json({ success: true, message: 'Verification code sent', data: result });
+});
+
+// POST /auth/otp/verify { email, code } — đúng mã -> verificationToken (15 phút) để gửi kèm khi đăng ký
+const verifyOtp = asyncHandler(async (req, res) => {
+    const verificationToken = await verifyRegisterOtp(normalizeEmail(req.body.email), req.body.code);
+
+    return res.status(200).json({ success: true, message: 'Email verified', data: { verificationToken } });
+});
+
+// POST /auth/password/forgot { email } — luôn trả cùng kết quả (không lộ email nào đã đăng ký)
+const forgotPassword = asyncHandler(async (req, res) => {
+    const result = await sendResetOtp(normalizeEmail(req.body.email));
+
+    return res.status(200).json({
+        success: true,
+        message: 'If this email has an account, a reset code has been sent',
+        data: result
+    });
+});
+
+// POST /auth/password/reset { email, code, newPassword } — đúng mã -> đặt mật khẩu mới,
+// mọi phiên đăng nhập cũ hết hiệu lực (passwordChangedAt), gửi email báo đã đổi
+const resetPassword = asyncHandler(async (req, res) => {
+    const email = normalizeEmail(req.body.email);
+    await consumeOtp(email, 'RESET_PASSWORD', req.body.code);
+
+    const user = await User.findOne({ email, status: 'ACTIVE' });
+    if (!user) {
+        throw new AppError(400, 'OTP_EXPIRED', 'The code has expired, please request a new one');
+    }
+
+    user.password = await bcrypt.hash(req.body.newPassword, 10);
+    user.passwordChangedAt = new Date();
+    // Nhận được mã qua email = email này đúng là của người dùng
+    user.emailVerified = true;
+    await user.save();
+
+    // Báo cho chủ tài khoản biết (nếu không phải họ đổi thì còn kịp liên hệ); lỗi gửi không làm hỏng việc đặt lại
+    mailer
+        .sendMail({
+            to: email,
+            subject: 'Mật khẩu MAK Food của bạn vừa được đổi',
+            text: `Mật khẩu tài khoản MAK Food (${email}) vừa được đặt lại lúc ${new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}.\nNếu không phải bạn, hãy dùng chức năng Quên mật khẩu để đặt lại ngay và liên hệ quản trị viên.`
+        })
+        .catch((error) => console.error('[mail] reset notice failed:', error.message));
+
+    return res.status(200).json({ success: true, message: 'Password has been reset' });
+});
+
 module.exports = {
+    forgotPassword,
+    resetPassword,
+    sendOtp,
+    verifyOtp,
     register,
     login,
     changePassword

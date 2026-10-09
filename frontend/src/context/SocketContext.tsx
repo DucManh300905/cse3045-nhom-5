@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { API_ORIGIN, TOKEN_KEY } from '../api/client';
+import type { AppNotification } from '../types';
 import { useAuth } from './AuthContext';
 
 // Realtime (docs/API.md mục 3): server tự cho vào phòng theo token (user / quán / admin).
@@ -35,6 +36,8 @@ interface SocketEvents {
   'order:new': OrderNewEvent;
   'order:status_changed': OrderStatusEvent;
   'restaurant:status_changed': RestaurantStatusEvent;
+  /** Thông báo vừa lưu cho chính người dùng này (chuông) */
+  'notification:new': AppNotification;
   /** Kết nối lại sau khi mất mạng -> nên tải lại dữ liệu để không sót */
   reconnected: void;
 }

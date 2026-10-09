@@ -18,9 +18,15 @@ const SORTS = {
 };
 
 // Khách chỉ thấy món: chưa xóa + quán đã duyệt + danh mục đang hiện
-const visibleItemFilter = async () => {
+const visibleItemFilter = async ({ minRating } = {}) => {
+    const restaurantFilter = { status: 'APPROVED' };
+    // Lọc món của quán từ N★ trở lên (quán đã có đánh giá)
+    if (minRating) {
+        Object.assign(restaurantFilter, { ratingAvg: { $gte: Number(minRating) }, ratingCount: { $gte: 1 } });
+    }
+
     const [approvedIds, hiddenCategoryIds] = await Promise.all([
-        Restaurant.find({ status: 'APPROVED' }).distinct('_id'),
+        Restaurant.find(restaurantFilter).distinct('_id'),
         MenuCategory.find({ isActive: false }).distinct('_id')
     ]);
 
@@ -35,8 +41,8 @@ const withRestaurant = (item) => toPublicMenuItemResponse(item, toRestaurantSumm
 
 // GET /menu-items?q=&type=FOOD|DRINK&restaurant=&inStock=true&sort=popular|price|-price|newest&page=&limit=
 const listMenuItems = asyncHandler(async (req, res) => {
-    const { q, type, restaurant, inStock, sort = 'popular' } = req.query;
-    const filter = await visibleItemFilter();
+    const { q, type, restaurant, inStock, minRating, sort = 'popular' } = req.query;
+    const filter = await visibleItemFilter({ minRating });
 
     if (q) {
         // Tìm không dấu: "com ga" khớp "Cơm gà"

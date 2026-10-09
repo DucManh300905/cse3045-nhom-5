@@ -17,6 +17,11 @@ const {
     updateCommission
 } = require('./admin.restaurant.controller');
 const { listAuditLogs } = require('./admin.auditLog.controller');
+const { listUsers, blockUser, unblockUser, listOrders, getOrder } = require('./admin.user.controller');
+const { adminSummary } = require('../report/report.controller');
+const { rangeRules } = require('../report/report.rules');
+const { ORDER_STATUSES } = require('../order/order.model');
+const { listAdminReviews, hideReview } = require('../review/review.controller');
 
 // Mount tại /api/admin — chỉ ADMIN
 const router = express.Router();
@@ -76,6 +81,76 @@ router.patch(
     ],
     validate,
     updateCommission
+);
+
+// ---- Đánh giá (API-8): ẩn đánh giá vi phạm ----
+
+router.get(
+    '/reviews',
+    [
+        query('hidden').optional().isIn(['true', 'false']).withMessage('hidden must be true or false'),
+        query('q').optional().isString().trim().isLength({ max: 100 }),
+        ...paginationRules
+    ],
+    validate,
+    listAdminReviews
+);
+
+router.patch(
+    '/reviews/:id/hide',
+    [
+        param('id').isMongoId().withMessage('Review not found'),
+        body('hidden').isBoolean({ strict: true }).withMessage('hidden must be true or false').toBoolean(),
+        body('reason').optional().isString().trim().isLength({ max: 500 })
+    ],
+    validate,
+    hideReview
+);
+
+// ---- Người dùng (API-9): xem, khóa / mở (BR-04) ----
+
+router.get(
+    '/users',
+    [
+        query('role').optional().isIn(['CUSTOMER', 'RESTAURANT_OWNER', 'ADMIN']).withMessage('role is not valid'),
+        query('status').optional().isIn(['ACTIVE', 'BLOCKED']).withMessage('status must be ACTIVE or BLOCKED'),
+        query('q').optional().isString().trim().isLength({ max: 100 }),
+        ...paginationRules
+    ],
+    validate,
+    listUsers
+);
+
+const userIdRule = param('id').isMongoId().withMessage('User not found');
+router.post('/users/:id/block', [userIdRule, reasonRule(false)], validate, blockUser);
+router.post('/users/:id/unblock', [userIdRule, reasonRule(false)], validate, unblockUser);
+
+// ---- Đơn hàng (API-9): chỉ đọc ----
+
+router.get(
+    '/orders',
+    [
+        query('status')
+            .optional()
+            .custom((value) => String(value).split(',').every((s) => ORDER_STATUSES.includes(s)))
+            .withMessage('status is not valid'),
+        query('restaurant').optional().isMongoId().withMessage('restaurant is not valid'),
+        query('q').optional().isString().trim().isLength({ max: 50 }),
+        ...rangeRules,
+        ...paginationRules
+    ],
+    validate,
+    listOrders
+);
+router.get('/orders/:id', [param('id').isMongoId().withMessage('Order not found')], validate, getOrder);
+
+// ---- Thống kê toàn hệ thống (API-9) ----
+
+router.get(
+    '/reports/summary',
+    [...rangeRules, query('groupBy').optional().isIn(['day', 'week', 'month']).withMessage('groupBy must be day, week or month')],
+    validate,
+    adminSummary
 );
 
 // ---- Audit log ----

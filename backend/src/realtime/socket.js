@@ -96,6 +96,9 @@ const emitRestaurantStatusChanged = (restaurant) => {
     });
 };
 
+// Thông báo vừa lưu -> chuông của người nhận (mọi tab đang mở)
+const emitNotification = (userId, notification) => emit(rooms.user(userId), 'notification:new', notification);
+
 const closeSocket = async () => {
     if (io) {
         await io.close();
@@ -108,5 +111,6 @@ module.exports = {
     closeSocket,
     emitOrderNew,
     emitOrderStatusChanged,
-    emitRestaurantStatusChanged
+    emitRestaurantStatusChanged,
+    emitNotification
 };

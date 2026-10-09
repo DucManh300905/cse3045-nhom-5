@@ -88,6 +88,12 @@ const userSchema = new mongoose.Schema(
             default: 'ACTIVE'
         },
 
+        // true khi đăng ký bằng email đã xác thực OTP (tài khoản cũ: chưa có trường này)
+        emailVerified: {
+            type: Boolean,
+            default: false
+        },
+
         avatarUrl: {
             type: String,
             trim: true

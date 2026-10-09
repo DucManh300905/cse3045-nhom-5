@@ -55,6 +55,15 @@ const errorHandler = (err, req, res, next) => {
         });
     }
 
+    // Body vượt giới hạn express.json (100kb)
+    if (err.type === 'entity.too.large') {
+        return res.status(413).json({
+            success: false,
+            message: 'Request body is too large',
+            code: 'VALIDATION_ERROR'
+        });
+    }
+
     // Body JSON hỏng (express.json)
     if (err.type === 'entity.parse.failed') {
         return res.status(400).json({

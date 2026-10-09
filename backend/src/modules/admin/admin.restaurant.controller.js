@@ -5,6 +5,7 @@ const Restaurant = require('../restaurant/restaurant.model');
 const { toRestaurantResponse } = require('../restaurant/restaurant.serializer');
 const { recordAudit } = require('../audit/audit.service');
 const { emitRestaurantStatusChanged } = require('../../realtime/socket');
+const notifications = require('../notification/notification.service');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
 const { getPagination, paginate, escapeRegex } = require('../../utils/pagination');
@@ -59,8 +60,9 @@ const transition = async (req, { from, to, set = {}, unset, action, note }) => {
         note
     });
 
-    // Báo chủ quán ngay (TODO API-7: tạo notification lưu lại)
+    // Báo chủ quán ngay + lưu thông báo (BLOCKED -> APPROVED là "mở khóa")
     emitRestaurantStatusChanged(updated);
+    await notifications.restaurantStatusChanged(updated, current.status === 'BLOCKED' ? 'UNBLOCKED' : to, note);
 
     return updated;
 };

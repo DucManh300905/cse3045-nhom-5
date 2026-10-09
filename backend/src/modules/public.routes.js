@@ -1,7 +1,11 @@
 const express = require('express');
-const { param, query } = require('express-validator');
+const { body, param, query } = require('express-validator');
 
 const { validate } = require('../middlewares/validate.middleware');
+const { authenticate } = require('../middlewares/auth.middleware');
+const { authorizeRoles } = require('../middlewares/role.middleware');
+const { reviewLimiter } = require('../middlewares/rateLimit.middleware');
+const reviews = require('./review/review.controller');
 const { paginationRules } = require('../utils/pagination');
 const restaurantPublic = require('./restaurant/restaurant.public.controller');
 const menuPublic = require('./menu/menu.public.controller');
@@ -25,6 +29,7 @@ restaurantRouter.get(
         searchRule,
         query('cuisine').optional().isString().isLength({ max: 50 }),
         booleanQuery('isOpen'),
+        query('minRating').optional().isFloat({ min: 1, max: 5 }).withMessage('minRating must be between 1 and 5'),
         oneOf('sort', Object.keys(restaurantPublic.SORTS)),
         ...paginationRules
     ],
@@ -37,6 +42,27 @@ const idOrSlugRule = param('idOrSlug').isLength({ max: 100 }).withMessage('Resta
 restaurantRouter.get('/:idOrSlug', [idOrSlugRule], validate, restaurantPublic.getRestaurant);
 restaurantRouter.get('/:idOrSlug/menu', [idOrSlugRule], validate, restaurantPublic.getRestaurantMenu);
 
+// ---- Đánh giá quán (API-8): 1–5 sao, mỗi khách 1 đánh giá / quán, phải có đơn hoàn thành ----
+
+const ratingQuery = query('rating').optional().isInt({ min: 1, max: 5 }).withMessage('rating must be 1-5');
+const customerOnly = [authenticate, authorizeRoles('CUSTOMER')];
+
+restaurantRouter.get('/:idOrSlug/reviews', [idOrSlugRule, ratingQuery, ...paginationRules], validate, reviews.listRestaurantReviews);
+restaurantRouter.get('/:idOrSlug/reviews/me', customerOnly, [idOrSlugRule], validate, reviews.getMyReview);
+restaurantRouter.put(
+    '/:idOrSlug/reviews/me',
+    customerOnly,
+    reviewLimiter,
+    [
+        idOrSlugRule,
+        body('rating').isInt({ min: 1, max: 5 }).withMessage('rating must be an integer from 1 to 5').toInt(),
+        body('comment').optional({ values: 'null' }).isString().trim().isLength({ max: 1000 }).withMessage('comment is too long (max 1000)')
+    ],
+    validate,
+    reviews.putMyReview
+);
+restaurantRouter.delete('/:idOrSlug/reviews/me', customerOnly, [idOrSlugRule], validate, reviews.removeMyReview);
+
 // ---- /api/menu-items ----
 
 menuItemRouter.get(
@@ -46,6 +72,7 @@ menuItemRouter.get(
         oneOf('type', MENU_ITEM_TYPES),
         query('restaurant').optional().isMongoId().withMessage('restaurant is not valid'),
         booleanQuery('inStock'),
+        query('minRating').optional().isFloat({ min: 1, max: 5 }).withMessage('minRating must be between 1 and 5'),
         oneOf('sort', Object.keys(menuPublic.SORTS)),
         ...paginationRules
     ],

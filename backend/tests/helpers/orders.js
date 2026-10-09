@@ -14,11 +14,14 @@ const newKey = () => `key-${Date.now()}-${(keySeq += 1)}`;
 
 const as = (token) => ({
     get: (url) => request(app).get(url).set('Authorization', `Bearer ${token}`),
+    patch: (url, body = {}) => request(app).patch(url).set('Authorization', `Bearer ${token}`).send(body),
     post: (url, body = {}, key) => {
         const req = request(app).post(url).set('Authorization', `Bearer ${token}`);
         return (key ? req.set('Idempotency-Key', key) : req).send(body);
     }
 });
+
+let shopSeq = 0;
 
 // Quán đã duyệt, đang nhận đơn: đơn tối thiểu 20k (không có phí giao)
 const createShop = async ({ name = 'Quán Test', ...overrides } = {}) => {
@@ -26,7 +29,8 @@ const createShop = async ({ name = 'Quán Test', ...overrides } = {}) => {
     const restaurant = await Restaurant.create({
         owner: user.id,
         name,
-        slug: `${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
+        // Slug không dấu, không trùng (dùng được trực tiếp trong URL)
+        slug: `shop-${Date.now()}-${(shopSeq += 1)}`,
         address: 'Hòa Lạc',
         phone: '0912345678',
         status: 'APPROVED',

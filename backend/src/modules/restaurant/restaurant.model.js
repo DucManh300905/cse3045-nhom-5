@@ -194,12 +194,21 @@ const restaurantSchema = new mongoose.Schema(
         ratingCount: {
             type: Number,
             default: 0
+        },
+
+        // Điểm xếp hạng có trọng số (Bayes): quán ít đánh giá bị kéo về mức trung bình chung,
+        // để 1 lượt 5★ không vượt quán 200 lượt 4.8★. Tính trong review.service.js
+        ratingScore: {
+            type: Number,
+            default: 3.5
         }
     },
     {
         timestamps: true
     }
 );
+
+restaurantSchema.index({ status: 1, ratingScore: -1 });
 
 restaurantSchema.pre('validate', function () {
     if (this.isModified('name')) {

@@ -26,7 +26,7 @@ export default function AccountPage() {
 }
 
 /** Sửa họ tên, số điện thoại (PUT /users/me) */
-function ProfilePanel() {
+export function ProfilePanel() {
   const { user, updateProfile } = useAuth();
   const notify = useToast();
   const [fullName, setFullName] = useState(user?.fullName ?? '');
@@ -74,7 +74,7 @@ function ProfilePanel() {
 }
 
 /** Đổi mật khẩu — backend trả token mới, AuthContext tự lưu (BR-05) */
-function PasswordPanel() {
+export function PasswordPanel() {
   const { changePassword } = useAuth();
   const notify = useToast();
   const [form, setForm] = useState({ current: '', next: '', confirm: '' });
@@ -85,7 +85,7 @@ function PasswordPanel() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!form.current) return setError('Vui lòng nhập mật khẩu hiện tại.');
-    if (form.next.length < 6) return setError('Mật khẩu mới phải có ít nhất 6 ký tự.');
+    if (form.next.length < 8) return setError('Mật khẩu mới phải có ít nhất 8 ký tự.');
     if (form.next === form.current) return setError('Mật khẩu mới phải khác mật khẩu hiện tại.');
     if (form.next !== form.confirm) return setError('Mật khẩu xác nhận không khớp.');
     setError('');
@@ -110,7 +110,7 @@ function PasswordPanel() {
       </label>
       <label>
         <span>Mật khẩu mới</span>
-        <input type="password" value={form.next} onChange={e => setField('next', e.target.value)} placeholder="Ít nhất 6 ký tự" autoComplete="new-password" />
+        <input type="password" value={form.next} onChange={e => setField('next', e.target.value)} placeholder="Ít nhất 8 ký tự" autoComplete="new-password" />
       </label>
       <label>
         <span>Xác nhận mật khẩu mới</span>

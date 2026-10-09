@@ -43,7 +43,7 @@ export default function UserMenu() {
               <button onClick={() => { setOpen(false); navigate('/account'); }}>Tài khoản & sổ địa chỉ</button>
             </>
           )}
-          <button onClick={() => { setOpen(false); logout(); notify('Đã đăng xuất'); navigate('/menu'); }}>Đăng xuất</button>
+          <button onClick={() => { setOpen(false); logout(); notify('Đã đăng xuất'); navigate('/', { replace: true }); }}>Đăng xuất</button>
         </div>
       )}
     </div>
