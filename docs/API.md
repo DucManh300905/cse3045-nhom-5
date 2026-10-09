@@ -41,7 +41,7 @@ Quyền: 🌐 public · 👤 CUSTOMER · 🏪 RESTAURANT_OWNER · 🛡️ ADMIN 
 | 404 | Không tìm thấy — **cũng dùng khi tài nguyên thuộc quán/người khác** (không lộ sự tồn tại) |
 | 409 | Trùng dữ liệu, chuyển trạng thái sai, đang chờ duyệt, danh mục còn món, hết hàng |
 | 422 | Vi phạm nghiệp vụ (hồ sơ thiếu, quán chưa duyệt, danh mục quán khác, quá số địa chỉ…) |
-| 429 | Vượt rate limit ⬜ |
+| 429 | Vượt rate limit (`RATE_LIMITED`) ✅ |
 
 ### 1.3 Xác thực & header
 
@@ -49,7 +49,8 @@ Quyền: 🌐 public · 👤 CUSTOMER · 🏪 RESTAURANT_OWNER · 🛡️ ADMIN 
 - FE: interceptor tự đăng xuất khi 401 hoặc 403 `ACCOUNT_BLOCKED` và báo lý do. ✅
 - `Idempotency-Key: <uuid>` — **bắt buộc** với `POST /orders` (BR-38). Gửi lại cùng key trong 24h → 200 + đơn cũ. ✅
 - Query danh sách: `page` (mặc định 1), `limit` (mặc định 20, tối đa 100). ✅
-- Upload file: `multipart/form-data`; ảnh jpg/png/webp ≤ 2MB (field `image`), giấy tờ thêm pdf (field `file`). ✅
+- Upload file: `multipart/form-data`; ảnh jpg/png/webp ≤ 2MB (field `image`), giấy tờ thêm pdf (field `file`); server kiểm tra chữ ký đầu file (magic bytes), không tin `mimetype` → sai thì 400 `INVALID_FILE_TYPE`. ✅
+- Mật khẩu mới (đăng ký, đổi mật khẩu): ≥ 8 ký tự, không nằm trong danh sách phổ biến (`utils/passwordPolicy.js`); mật khẩu admin ≥ 12 ký tự. ✅
 
 > ⚠️ **Express 5:** `req.query` chỉ đọc — sanitizer của express-validator (`.toInt()`, `.trim()`) **không** ghi lại được giá trị query, chỉ phần validate có tác dụng. Controller phải tự ép kiểu (`Number(req.query.page)`). Với `req.body` thì sanitizer hoạt động bình thường.
 
@@ -65,7 +66,8 @@ Quyền: 🌐 public · 👤 CUSTOMER · 🏪 RESTAURANT_OWNER · 🛡️ ADMIN 
 | `validate` | `middlewares/validate.middleware.js` | Gom lỗi express-validator → 400 `VALIDATION_ERROR` | ✅ |
 | `restaurantImageUpload`, `menuItemImageUpload`, `restaurantDocumentUpload` | `middlewares/upload.middleware.js` | `multer` lưu ổ đĩa, kiểm tra loại + dung lượng, bắt buộc có file | ✅ |
 | `notFound`, `errorHandler` | `middlewares/error.middleware.js` | 404 route; gom `AppError`, `ValidationError`, `CastError`, lỗi trùng 11000, JSON hỏng | ✅ |
-| `rateLimit` | — | `express-rate-limit` cho `/auth/*` (10 req/phút/IP) | ⬜ |
+| `rateLimit` | `middlewares/rateLimit.middleware.js` | Đăng nhập / đổi mật khẩu: 10 lần **sai** / 15 phút / IP; đăng ký: 10 / giờ / IP. Sau proxy cần `TRUST_PROXY` | ✅ |
+| `helmet` | `app.js` | Header bảo mật (nosniff, chống iframe, HSTS…), body JSON tối đa 100kb (→ 413) | ✅ |
 | `idempotency` | `modules/order/order.service.js` | Header `Idempotency-Key` cho đặt đơn (xử lý trong service, không cần middleware riêng) | ✅ |
 
 Tiện ích cho controller: `throw new AppError(status, code, message, errors?)` + bọc bằng `asyncHandler`; phân trang `getPagination` / `paginate` / `escapeRegex` (`utils/pagination.js`); rule validate dùng chung `textRule`, `phoneRule`, `locationRules`, `moneyRule` (`utils/validationRules.js`).
@@ -86,12 +88,14 @@ Tiện ích cho controller: `throw new AppError(status, code, message, errors?)`
 
 | Method | Path | Quyền | Mô tả | BR | |
 |---|---|---|---|---|---|
-| POST | `/auth/register` | 🌐 | Đăng ký CUSTOMER / RESTAURANT_OWNER | BR-01..03 | ✅ |
+| POST | `/auth/register` | 🌐 | Đăng ký CUSTOMER / RESTAURANT_OWNER. **Đăng ký bằng email phải kèm `verificationToken`** (thiếu / sai → 400 `OTP_REQUIRED`); bằng SĐT chưa cần OTP | BR-01..03 | ✅ |
 | POST | `/auth/login` | 🌐 | Đăng nhập bằng `identifier` (email/SĐT); vẫn nhận field `email` cũ | BR-04 | ✅ |
 | PUT | `/auth/change-password` | 🔑 | `{ currentPassword, newPassword }` → trả **token mới** | BR-05 | ✅ |
 | POST | `/auth/refresh` | 🌐 | Cấp lại access token | | ⏭️ |
-| POST | `/auth/otp/send`, `/auth/otp/verify` | 🌐 | OTP email/SĐT | | ⏭️ |
-| POST | `/auth/forgot-password`, `/auth/reset-password` | 🌐 | | | ⏭️ |
+| POST | `/auth/otp/send` | 🌐 | `{ email }` gửi mã OTP **6 số** qua Gmail (hết hạn 5 phút; gửi lại sau 60 giây; ≤ 5 mã / giờ / email; 10 lần / 15 phút / IP). Email đã có tài khoản → 409 | BR-01 | ✅ |
+| POST | `/auth/otp/verify` | 🌐 | `{ email, code }` → `{ verificationToken }` (15 phút). Sai → 400 `OTP_INVALID` + `attemptsLeft`; sai 5 lần → 429 `OTP_TOO_MANY_ATTEMPTS`; mỗi mã dùng 1 lần | BR-01 | ✅ |
+| POST | `/auth/password/forgot` | 🌐 | `{ email }` gửi mã 6 số đặt lại mật khẩu. **Luôn trả 200 giống nhau** dù email có tài khoản hay không (chống dò email); tài khoản bị khóa không nhận mã. Cùng giới hạn như OTP đăng ký | BR-05 | ✅ |
+| POST | `/auth/password/reset` | 🌐 | `{ email, code, newPassword }` — đúng mã → đặt mật khẩu mới (chính sách ≥ 8 ký tự, không phổ biến), `passwordChangedAt` → mọi phiên cũ hết hiệu lực, gửi email báo đã đổi. Mật khẩu yếu bị từ chối **trước** khi tính lượt nhập mã. Mã đăng ký không dùng được ở đây | BR-05 | ✅ |
 
 `POST /auth/register`
 ```json
@@ -141,7 +145,8 @@ Chỉ hiện quán `APPROVED`, danh mục `isActive`, món chưa xóa (BR-12). K
 | GET | `/restaurants/:idOrSlug/menu` | Menu theo danh mục; món hết vẫn hiện với `isOrderable: false`; danh mục rỗng bị bỏ | ✅ |
 | GET | `/menu-items` | Tìm món toàn hệ thống (thay `data/menu.ts`). Query: `q` (không dấu), `type=FOOD\|DRINK`, `restaurant` (id), `inStock=true`, `sort=popular\|price\|-price\|newest` (mặc định `popular`), `page`, `limit` | ✅ |
 | GET | `/menu-items/:id` | Chi tiết món + variants + optionGroups + quán | ✅ |
-| GET | `/restaurants/:id/reviews` | Đánh giá của quán (phân trang) | ⬜ |
+| GET | `/restaurants/:idOrSlug/reviews` | Đánh giá đang hiện của quán (mới sửa nhất trước), `?rating=1..5`, phân trang; kèm `summary { ratingAvg, ratingCount, distribution }`; tên khách rút gọn | ✅ |
+| GET | `/restaurants?minRating=4` · `/menu-items?minRating=4` | Chỉ quán (món của quán) từ 4★, đã có đánh giá. `sort=rating` (mặc định) = điểm có trọng số `ratingScore` | ✅ |
 | GET | `/restaurants?lat=&lng=&sort=distance` | Sắp theo khoảng cách | ⏭️ (`$near` không đi chung phân trang hiện tại) |
 
 Ví dụ `GET /restaurants/quan-c/menu`
@@ -233,11 +238,11 @@ Quy tắc giá: có `variants` → `basePrice` tự bằng giá biến thể m�
 |---|---|---|---|---|
 | GET / POST | `/merchant/vouchers` | Danh sách / tạo voucher | BR-40, 41 | ⬜ |
 | PUT / DELETE | `/merchant/vouchers/:id` | Sửa / tắt (không xóa nếu đã dùng) | | ⬜ |
-| GET | `/merchant/reviews` | Đánh giá của quán | | ⬜ |
-| PUT | `/merchant/reviews/:id/reply` | `{ content }` trả lời / sửa trả lời | BR-61 | ⬜ |
-| GET | `/merchant/reports/summary` | `?from&to` → số đơn, doanh thu, giá trị đơn TB, tỷ lệ hủy, rating | BR-52 | ⬜ |
-| GET | `/merchant/reports/revenue` | `?from&to&groupBy=day\|week\|month` | BR-51 | ⬜ |
-| GET | `/merchant/reports/top-items` | `?from&to&limit=10` | | ⬜ |
+| GET | `/merchant/reviews` | Đánh giá của quán (kể cả bị ẩn, có cờ), `?rating=`, `?replied=false` | | ✅ |
+| PUT | `/merchant/reviews/:id/reply` | `{ content }` trả lời / sửa trả lời; đánh giá quán khác → 404 | BR-61 | ✅ |
+| GET | `/merchant/reports/summary` | `?from&to` (YYYY-MM-DD giờ VN, mặc định 30 ngày, tối đa 366) → `totalOrders`, `completedOrders`, `cancelledOrders`, `activeOrders`, `itemsSold`, `grossRevenue`, `commission`, `netRevenue`, `avgOrderValue`, `cancelRate` (trên đơn đã kết thúc), rating. Doanh thu chỉ tính đơn `COMPLETED`, theo ngày đặt | BR-52 | ✅ |
+| GET | `/merchant/reports/revenue` | `?from&to&groupBy=day\|week\|month` → `series` đủ mọi kỳ (kỳ trống = 0; tuần bắt đầu thứ Hai; `period` = ngày đầu kỳ) | BR-51 | ✅ |
+| GET | `/merchant/reports/top-items` | `?from&to&limit=10` → món theo số phần (đơn hoàn thành), cùng số phần thì doanh thu cao trước | | ✅ |
 
 ### 2.6 Đơn hàng của khách — `/orders` 🟡 (đặt / xem / hủy ✅, đánh giá ⬜)
 
@@ -248,7 +253,9 @@ Quy tắc giá: có `variants` → `basePrice` tự bằng giá biến thể m�
 | GET | `/orders` | 👤 | Đơn của tôi, mới nhất trước, lọc `status=PLACED,ACCEPTED`, phân trang | | ✅ |
 | GET | `/orders/:id` | 👤 | Chi tiết + `statusHistory`; đơn người khác → 404 | | ✅ |
 | POST | `/orders/:id/cancel` | 👤 | `{ note? }` chỉ khi `PLACED`, hoàn suất; trạng thái khác → 409 | BR-35, 37 | ✅ |
-| POST | `/orders/:id/review` | 👤 | `{ rating, comment }` — chỉ đơn `COMPLETED` | BR-60 | ⬜ |
+| GET | `/restaurants/:idOrSlug/reviews/me` | 👤 | `{ canReview, review }` — đánh giá của tôi cho quán | BR-60 | ✅ |
+| PUT | `/restaurants/:idOrSlug/reviews/me` | 👤 | `{ rating: 1..5, comment? }` viết mới (201) / sửa (200); chưa có đơn hoàn thành → 403 `REVIEW_NOT_ALLOWED`; 20 lần / giờ / IP | BR-60 | ✅ |
+| DELETE | `/restaurants/:idOrSlug/reviews/me` | 👤 | Xóa đánh giá của tôi | BR-60 | ✅ |
 
 `POST /orders`
 ```json
@@ -277,7 +284,7 @@ Thứ tự xử lý ở server (trong 1 transaction):
 5. Kiểm tra & giữ voucher (BR-40..42) → 422 `VOUCHER_INVALID`.
 6. Trừ tồn kho nguyên tử (BR-34) → 409 `ITEM_OUT_OF_STOCK` kèm `menuItemId`.
 7. Tạo đơn `PLACED` + snapshot + `commissionAmount`; lưu idempotency key.
-8. Sau commit: phát Socket `order:new` tới quán ✅, tạo notification ⬜ (API-7).
+8. Sau commit: phát Socket `order:new` tới quán ✅, tạo notification cho chủ quán ✅.
 
 ### 2.7 Admin — `/admin`
 
@@ -294,21 +301,34 @@ Tất cả: `authenticate` + `authorizeRoles('ADMIN')`; mọi thao tác đổi d
 | POST | `/admin/restaurants/:id/unblock` | BLOCKED → APPROVED | BR-16 | ✅ |
 | PATCH | `/admin/restaurants/:id/commission` | `{ commissionRate }` (0–1) | BR-51 | ✅ |
 | GET | `/admin/audit-logs` | `?action=&targetId=&page=&limit=`, kèm `actor { fullName, email, role }` | BR-70 | ✅ |
-| GET | `/admin/users` | Lọc `role`, `status`, `q` | | ⬜ |
-| POST | `/admin/users/:id/block` · `/unblock` | Khóa / mở user (không khóa được ADMIN) | BR-04 | ⬜ |
-| GET | `/admin/orders` | Xem mọi đơn (chỉ đọc) | | ⬜ |
-| PATCH | `/admin/reviews/:id/hide` | Ẩn đánh giá vi phạm | | ⬜ |
-| GET | `/admin/reports/summary` | Tổng quán, user, đơn, GMV, hoa hồng theo khoảng ngày | | ⬜ |
+| GET | `/admin/users` | Lọc `role`, `status`, `q` (tên / email / SĐT), phân trang; chủ quán kèm `restaurant` | | ✅ |
+| POST | `/admin/users/:id/block` · `/unblock` | `{ reason? }` khóa / mở; ADMIN → 403; đã ở trạng thái đó → 409; khóa chủ quán → quán tắt nhận đơn; audit `USER_BLOCK` / `USER_UNBLOCK` | BR-04 | ✅ |
+| GET | `/admin/orders` · `/admin/orders/:id` | Xem mọi đơn (chỉ đọc): lọc `status` (nhiều giá trị), `restaurant`, `q` (mã đơn), `from`/`to`; kèm khách | | ✅ |
+| GET | `/admin/reviews` | `?hidden=true\|false`, `?q=<tên quán>`, phân trang; kèm khách + quán | | ✅ |
+| PATCH | `/admin/reviews/:id/hide` | `{ hidden, reason? }` ẩn / hiện; tính lại điểm quán; ghi audit `REVIEW_HIDE` / `REVIEW_UNHIDE` | | ✅ |
+| GET | `/admin/reports/summary` | `?from&to&groupBy` → `gmv`, `platformRevenue` (hoa hồng), `orders`, `restaurants.byStatus`, `users.byRole` + `blocked` + `newInRange`, `series`, `topRestaurants` (5) | | ✅ |
 
-Thông báo cho chủ quán khi được duyệt / bị từ chối: đẩy realtime `restaurant:status_changed` ✅; lưu vào `notifications` ⬜ (API-7).
+Thông báo cho chủ quán khi được duyệt / từ chối / khóa / mở khóa: đẩy realtime `restaurant:status_changed` + lưu vào `notifications` ✅. Chủ quán nộp hồ sơ → mọi admin nhận `RESTAURANT_SUBMITTED` ✅.
 
-### 2.8 Thông báo — `/notifications` ⬜
+### 2.8 Thông báo — `/notifications` ✅
+
+Mọi vai trò đã đăng nhập; chỉ thấy thông báo của chính mình (của người khác → 404). Tự xóa sau 90 ngày.
 
 | Method | Path | Quyền | Mô tả | |
 |---|---|---|---|---|
-| GET | `/notifications` | 🔑 | `?unread=true` | ⬜ |
-| PATCH | `/notifications/:id/read` | 🔑 | Đánh dấu đã đọc | ⬜ |
-| PATCH | `/notifications/read-all` | 🔑 | | ⬜ |
+| GET | `/notifications` | 🔑 | Mới nhất trước, `?unread=true`, phân trang; kèm `unreadCount` cho huy hiệu chuông | ✅ |
+| PATCH | `/notifications/:id/read` | 🔑 | Đánh dấu đã đọc | ✅ |
+| PATCH | `/notifications/read-all` | 🔑 | Trả `{ modifiedCount }` | ✅ |
+
+| Khi nào | Ai nhận | `type` |
+|---|---|---|
+| Khách đặt đơn | Chủ quán | `ORDER_NEW` |
+| Quán nhận / chuẩn bị / xong / đi giao / hoàn thành / từ chối / hủy; hệ thống tự hủy | Khách | `ORDER_STATUS` |
+| Khách hủy; hệ thống tự hủy | Chủ quán | `ORDER_STATUS` |
+| Chủ quán nộp hồ sơ | Mọi admin | `RESTAURANT_SUBMITTED` |
+| Admin duyệt / từ chối / khóa / mở khóa | Chủ quán | `RESTAURANT_APPROVED` · `_REJECTED` · `_BLOCKED` · `_UNBLOCKED` |
+
+Người thực hiện thao tác không tự nhận thông báo của chính mình. `data.link` = trang FE mở khi bấm.
 
 ### 2.9 Sau MVP ⏭️
 
@@ -334,7 +354,7 @@ File: `src/realtime/socket.js` (server) · `frontend/src/context/SocketContext.t
 |---|---|---|---|
 | `order:new` | `restaurant:{id}` | `{ orderId, code, total, itemsCount, fulfillmentType, placedAt }` | Sau khi đặt đơn thành công → FE quán phát âm báo ✅ |
 | `order:status_changed` | `user:{customerId}`, `restaurant:{id}` | `{ orderId, code, from, to, actorType, reason?, at }` | Mọi lần đổi trạng thái (kể cả SYSTEM timeout) ✅ |
-| `notification:new` | `user:{id}` | `{ id, type, title, body }` | Khi tạo notification ⬜ (API-7) |
+| `notification:new` | `user:{id}` | `{ id, type, title, body, data: { orderId?, restaurantId?, code?, link }, isRead, createdAt }` | Khi tạo notification ✅ |
 | `restaurant:status_changed` | `user:{ownerId}` | `{ restaurantId, status, rejectReason? }` | Admin duyệt / từ chối / khóa / mở khóa ✅ |
 | `ready` | (chính socket đó) | `{ rooms }` | Ngay sau khi vào phòng — dùng trong test |
 
@@ -348,8 +368,12 @@ Mất kết nối: FE tải lại danh sách đơn khi kết nối lại (`useSo
 |---|---|---|---|
 | `VALIDATION_ERROR` | 400 | Sai định dạng dữ liệu, JSON hỏng, thiếu file | ✅ |
 | `INVALID_PASSWORD` | 400 | Sai mật khẩu hiện tại khi đổi mật khẩu | ✅ |
+| `OTP_REQUIRED` · `OTP_INVALID` · `OTP_EXPIRED` | 400 | Đăng ký email thiếu vé / mã sai / mã hết hạn hoặc đã dùng | ✅ |
+| `OTP_TOO_SOON` · `OTP_LIMIT` · `OTP_TOO_MANY_ATTEMPTS` | 429 | Gửi lại trong 60 giây (`retryAfter`) / quá 5 mã một giờ / sai quá 5 lần | ✅ |
+| `MAIL_FAILED` | 502 | Không gửi được email (SMTP lỗi) — gửi lại được ngay | ✅ |
 | `INVALID_FILE_TYPE` / `INVALID_FILE` | 400 | File sai loại / quá 2MB | ✅ |
 | `IDEMPOTENCY_KEY_REQUIRED` | 400 | BR-38 | ✅ |
+| `RATE_LIMITED` | 429 | Thử đăng nhập / đăng ký / đổi mật khẩu quá nhiều lần | ✅ |
 | `UNAUTHORIZED` | 401 | Thiếu token | ✅ |
 | `TOKEN_EXPIRED` | 401 | Token sai / hết hạn / cấp trước khi đổi mật khẩu / user đã bị xóa | ✅ |
 | `FORBIDDEN` | 403 | Sai vai trò (`authorizeRoles`) | ✅ |
@@ -363,7 +387,7 @@ Mất kết nối: FE tải lại danh sách đơn khi kết nối lại (`useSo
 | `INVALID_STATUS_TRANSITION` | 409 | Chuyển trạng thái quán/đơn không hợp lệ hoặc bị người khác đổi trước (BR-35, 71) | ✅ |
 | `CATEGORY_NOT_EMPTY` | 409 | Xóa danh mục còn món | ✅ |
 | `ITEM_OUT_OF_STOCK` | 409 | BR-34 — món hết suất / tạm hết / đã xóa; `errors[0].menuItemId` | ✅ |
-| `ALREADY_REVIEWED` | 409 | BR-60 | ⬜ |
+| `REVIEW_NOT_ALLOWED` | 403 | Chưa có đơn hoàn thành ở quán (BR-60). Không còn `ALREADY_REVIEWED`: viết lại = sửa | ✅ |
 | `PROFILE_INCOMPLETE` | 422 | Nộp hồ sơ khi thiếu giờ mở cửa / giấy tờ (BR-15) | ✅ |
 | `RESTAURANT_NOT_APPROVED` | 422 | Bật nhận đơn khi chưa duyệt (BR-12) | ✅ |
 | `INVALID_CATEGORY` | 422 | Món gắn vào danh mục của quán khác (BR-20) | ✅ |
@@ -390,9 +414,9 @@ Quy ước cho **mỗi endpoint**: route + validate → controller (`asyncHandle
 | **API-4** Menu | 17/10 – 19/10 | `/merchant/categories`, `/merchant/menu-items`; public `/restaurants`, `/restaurants/:idOrSlug/menu`, `/menu-items`; `seed:demo` | FE `/menu` chạy bằng API, xóa `data/menu.ts` | ✅ 06/10 |
 | **API-5** Đặt đơn | 19/10 – 21/10 | `/orders/preview`, `POST /orders` (8 bước mục 2.6), idempotency — **7a**; voucher — **7b** | 5 request mua 1 suất cuối → 1 thành công, 4 lỗi 409 | 🟡 7a ✅ 06/10 (voucher 7b ⬜) |
 | **API-6** Xử lý đơn + realtime | 21/10 – 23/10 | `orderStateMachine.js`; `/merchant/orders*`; `/orders/:id/cancel`; Socket.IO; job timeout + reset suất | Bảng chuyển trạng thái BR-35 được test đủ từng ô | ✅ 06/10 |
-| **API-7** Thông báo | 23/10 – 24/10 | `/notifications*` + `notification:new` + báo duyệt/từ chối quán | Chuông thông báo trên FE || ⬜ **← tiếp theo** |
-| **API-8** Đánh giá | 24/10 – 26/10 | `POST /orders/:id/review`, `/merchant/reviews*`, public reviews, admin ẩn | Đánh giá lần 2 → 409 | ⬜ |
-| **API-9** Báo cáo & admin còn lại | 26/10 – 29/10 | `/merchant/reports/*`, `/admin/reports/summary`, `/admin/users*`, `/admin/orders` | Số liệu khớp seed | ⬜ |
+| **API-7** Thông báo | 23/10 – 24/10 | `/notifications*` + `notification:new` + báo duyệt/từ chối quán | Chuông thông báo trên FE | ✅ 08/10 |
+| **API-8** Đánh giá | 24/10 – 26/10 | Đánh giá chung cho quán (đổi 08/10): `/restaurants/:idOrSlug/reviews[/me]`, `/merchant/reviews*`, `/admin/reviews*`, `minRating`, `ratingScore` | Mỗi khách 1 đánh giá / quán; 6×4★ xếp trên 1×5★ | ✅ 08/10 |
+| **API-9** Báo cáo & admin còn lại | 26/10 – 29/10 | `/merchant/reports/*`, `/admin/reports/summary`, `/admin/users*`, `/admin/orders*`; FE dashboard chủ quán + admin, quản lý người dùng / đơn, trang tài khoản cho chủ quán / admin | Số liệu khớp dữ liệu test (ranh giới ngày VN, chỉ đơn hoàn thành) | ✅ 09/10 |
 | **API-10** Cứng hóa | 29/10 – 02/11 | Test phân quyền chéo quán cho mọi route; rate limit; CORS production; `helmet`; Cloudinary; xuất Postman/Swagger | Owner A gọi tài nguyên quán B → 404 ở mọi route | 🟡 (chéo quán cho hồ sơ + menu ✅) |
 | API-11 ⏭️ | sau MVP | Refresh token, OTP, nhân viên, ví/payout, VNPay | — | ⏭️ |
 

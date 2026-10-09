@@ -1,6 +1,7 @@
 const path = require('path');
 
 const Restaurant = require('./restaurant.model');
+const notifications = require('../notification/notification.service');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
 const { slugify } = require('../../utils/text');
@@ -198,6 +199,9 @@ const submitRestaurant = asyncHandler(async (req, res) => {
     restaurant.submittedAt = new Date();
     restaurant.rejectReason = undefined;
     await restaurant.save();
+
+    // Báo các admin có hồ sơ mới cần duyệt
+    await notifications.restaurantSubmitted(restaurant);
 
     return res.status(200).json({
         success: true,

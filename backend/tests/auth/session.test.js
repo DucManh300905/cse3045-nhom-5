@@ -51,7 +51,7 @@ describe('PUT /api/auth/change-password', () => {
     test('đổi mật khẩu thành công, trả token mới dùng được', async () => {
         const { token, user } = await createUserAndLogin();
 
-        const res = await changePassword(token, { currentPassword: '123456', newPassword: 'abcdef' });
+        const res = await changePassword(token, { currentPassword: 'Test@1234', newPassword: 'Abcd@5678' });
 
         expect(res.status).toBe(200);
         expect((await me(res.body.data.token)).status).toBe(200);
@@ -59,7 +59,7 @@ describe('PUT /api/auth/change-password', () => {
         // Đăng nhập bằng mật khẩu mới
         await request(app)
             .post('/api/auth/login')
-            .send({ identifier: user.email, password: 'abcdef' })
+            .send({ identifier: user.email, password: 'Abcd@5678' })
             .expect(200);
     });
 
@@ -71,7 +71,7 @@ describe('PUT /api/auth/change-password', () => {
             process.env.JWT_SECRET
         );
 
-        await changePassword(token, { currentPassword: '123456', newPassword: 'abcdef' }).expect(200);
+        await changePassword(token, { currentPassword: 'Test@1234', newPassword: 'Abcd@5678' }).expect(200);
 
         const res = await me(issuedLongAgo);
 
@@ -82,16 +82,19 @@ describe('PUT /api/auth/change-password', () => {
     test('sai mật khẩu hiện tại trả 400 (không phải 401)', async () => {
         const { token } = await createUserAndLogin();
 
-        const res = await changePassword(token, { currentPassword: 'sai', newPassword: 'abcdef' });
+        const res = await changePassword(token, { currentPassword: 'sai', newPassword: 'Abcd@5678' });
 
         expect(res.status).toBe(400);
         expect(res.body.code).toBe('INVALID_PASSWORD');
     });
 
-    test('mật khẩu mới < 6 ký tự trả 400', async () => {
+    test.each([
+        ['< 8 ký tự', 'Abc@123'],
+        ['quá phổ biến', 'password123']
+    ])('mật khẩu mới %s trả 400', async (_, newPassword) => {
         const { token } = await createUserAndLogin();
 
-        const res = await changePassword(token, { currentPassword: '123456', newPassword: '123' });
+        const res = await changePassword(token, { currentPassword: 'Test@1234', newPassword });
 
         expect(res.status).toBe(400);
         expect(res.body.code).toBe('VALIDATION_ERROR');
@@ -100,7 +103,7 @@ describe('PUT /api/auth/change-password', () => {
     test('mật khẩu mới trùng mật khẩu cũ trả 400', async () => {
         const { token } = await createUserAndLogin();
 
-        const res = await changePassword(token, { currentPassword: '123456', newPassword: '123456' });
+        const res = await changePassword(token, { currentPassword: 'Test@1234', newPassword: 'Test@1234' });
 
         expect(res.status).toBe(400);
     });
@@ -108,7 +111,7 @@ describe('PUT /api/auth/change-password', () => {
     test('401 khi chưa đăng nhập', async () => {
         const res = await request(app)
             .put('/api/auth/change-password')
-            .send({ currentPassword: '123456', newPassword: 'abcdef' });
+            .send({ currentPassword: 'Test@1234', newPassword: 'Abcd@5678' });
 
         expect(res.status).toBe(401);
     });

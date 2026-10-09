@@ -12,7 +12,8 @@ const { toLocalParts } = require('../../utils/openingHours');
 const { getPagination, paginate, escapeRegex } = require('../../utils/pagination');
 
 const SORTS = {
-    rating: { ratingAvg: -1, ratingCount: -1, _id: 1 },
+    // Điểm có trọng số (review.service): quán ít đánh giá không vượt quán nhiều đánh giá tốt
+    rating: { ratingScore: -1, ratingCount: -1, _id: 1 },
     name: { nameNoAccent: 1, _id: 1 },
     newest: { approvedAt: -1, _id: 1 }
 };
@@ -32,7 +33,7 @@ const findApprovedRestaurant = async (idOrSlug) => {
 // GET /restaurants?q=&cuisine=&isOpen=true&sort=rating|name|newest&page=&limit=
 const listRestaurants = asyncHandler(async (req, res) => {
     const filter = { status: 'APPROVED' };
-    const { q, cuisine, isOpen, sort = 'rating' } = req.query;
+    const { q, cuisine, isOpen, minRating, sort = 'rating' } = req.query;
 
     if (q) {
         const keyword = escapeRegex(removeAccents(q).toLowerCase().trim());
@@ -41,6 +42,12 @@ const listRestaurants = asyncHandler(async (req, res) => {
 
     if (cuisine) {
         filter.cuisineTypes = cuisine;
+    }
+
+    // Lọc "từ 4★ trở lên": chỉ quán đã có đánh giá
+    if (minRating) {
+        filter.ratingAvg = { $gte: Number(minRating) };
+        filter.ratingCount = { $gte: 1 };
     }
 
     // Đang nhận đơn: bật nhận đơn + có khung giờ chứa thời điểm hiện tại (giờ VN, BR-13)
@@ -96,6 +103,7 @@ const getRestaurantMenu = asyncHandler(async (req, res) => {
 
 module.exports = {
     SORTS,
+    findApprovedRestaurant,
     listRestaurants,
     getRestaurant,
     getRestaurantMenu

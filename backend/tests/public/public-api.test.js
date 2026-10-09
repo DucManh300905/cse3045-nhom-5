@@ -30,12 +30,12 @@ const createDraftRestaurantWithItem = async () => {
 };
 
 beforeEach(async () => {
-    await seedDemo({ password: '123456' });
+    await seedDemo({ password: 'Test@1234' });
 });
 
 describe('seed:demo', () => {
     test('tạo 3 quán đã duyệt và 16 món; chạy lại không bị trùng', async () => {
-        await seedDemo({ password: '123456' });
+        await seedDemo({ password: 'Test@1234' });
 
         expect(await Restaurant.countDocuments({ status: 'APPROVED' })).toBe(3);
         expect(await MenuItem.countDocuments()).toBe(DISHES.length);
@@ -45,7 +45,7 @@ describe('seed:demo', () => {
     test('tài khoản demo đăng nhập được', async () => {
         await request(app)
             .post('/api/auth/login')
-            .send({ identifier: 'owner.quana@mak.com', password: '123456' })
+            .send({ identifier: 'owner.quana@mak.com', password: 'Test@1234' })
             .expect(200);
     });
 });

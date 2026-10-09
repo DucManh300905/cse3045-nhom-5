@@ -63,20 +63,20 @@ backend/
 ├── src/
 │   ├── app.js, server.js
 │   ├── config/            database.js ✅, mongoose.js ✅ (plugin toJSON: id, ẩn password), storage.js ✅
-│   ├── middlewares/       auth ✅, role ✅, validate ✅, error ✅, restaurant ✅, upload ✅ — idempotency ⬜, rateLimit ⬜
+│   ├── middlewares/       auth ✅, role ✅, validate ✅, error ✅, restaurant ✅, upload ✅ — rateLimit ✅ (idempotency xử lý trong order.service)
 │   ├── modules/
 │   │   ├── auth/          ✅ register, login, change-password
 │   │   ├── user/          ✅ profile + sổ địa chỉ (address.controller.js)
 │   │   ├── restaurant/    ✅ model, serializer, merchant (hồ sơ quán), public (khách xem quán + menu)
 │   │   ├── menu/          ✅ danh mục, món (biến thể, topping), merchant + public, serializer
 │   │   ├── audit/         ✅ auditLog.model.js + recordAudit()
-│   │   ├── admin/         🟡 duyệt/khóa quán, hoa hồng, audit log — còn user, đơn, báo cáo
+│   │   ├── admin/         ✅ duyệt/khóa quán, hoa hồng, audit log, người dùng, đơn (chỉ đọc), đánh giá
 │   │   ├── public.routes.js  ✅ /api/restaurants, /api/menu-items
 │   │   ├── order/         ✅ đặt đơn, tính tiền, state machine (orderStateMachine.js), khách + merchant routes
 │   │   ├── promotion/     ⬜ voucher của quán
 │   │   ├── review/        ⬜ đánh giá + trả lời
-│   │   ├── notification/  ⬜ lưu thông báo + đẩy Socket.IO
-│   │   └── report/        ⬜ dashboard quán, thống kê admin
+│   │   ├── notification/  ✅ lưu thông báo + đẩy Socket.IO, chuông trên FE
+│   │   └── report/        ✅ dashboard quán, thống kê admin (report.service.js)
 │   ├── realtime/          ✅ socket.js (xác thực JWT, phòng user/restaurant/admin, emit sự kiện)
 │   ├── jobs/              ✅ index.js: orderTimeout (mỗi phút), dailyStockReset (00:00 VN)
 │   └── utils/             AppError, asyncHandler, validators, validationRules, pagination,
@@ -156,6 +156,7 @@ Phân quyền **theo từng cửa hàng** (RBAC), lưu ở collection `storeStaf
 | A7 | Nhiều chi nhánh / một chủ | ⏭️ (MVP: 1 chủ = 1 quán) | ⬜ |
 | A8 | Nhân viên quán (RBAC) | ⏭️ | ⬜ |
 | A9 | Đổi mật khẩu (vô hiệu token cũ) | MVP | ✅ BE · ✅ FE |
+| A10 | Quên mật khẩu: mã 6 số qua Gmail → đặt mật khẩu mới (tài khoản đăng ký bằng email) | MVP | ✅ BE · ✅ FE |
 | A10 | Refresh token, quên mật khẩu | ⏭️ | ⬜ |
 | A11 | Tài khoản bị khóa mất quyền truy cập ngay (không chờ token hết hạn) | MVP | ✅ |
 
@@ -223,24 +224,25 @@ Phân quyền **theo từng cửa hàng** (RBAC), lưu ở collection `storeStaf
 
 | # | Chức năng | Phạm vi | Trạng thái |
 |---|---|---|---|
-| G1 | Khách đánh giá (1–5 sao + bình luận) đơn đã hoàn thành | MVP | ⬜ (field `ratingAvg/ratingCount` trên quán đã có) |
-| G2 | Quán trả lời công khai | MVP | ⬜ |
-| G3 | Điểm chất lượng quán (tỷ lệ nhận, hủy, rating) | MVP rút gọn: rating TB + tỷ lệ hủy | ⬜ |
+| G1 | Khách đánh giá **quán** (1–5 sao + nhận xét), hiện công khai trên trang quán | MVP | ✅ |
+| G2 | Quán trả lời công khai | MVP | ✅ |
+| G3 | Điểm chất lượng quán (tỷ lệ nhận, hủy, rating) | MVP rút gọn: rating TB + tỷ lệ hủy | 🟡 (rating TB + điểm xếp hạng ✅, tỷ lệ hủy ⬜) |
+| G5 | Thẻ quán ở trang khách, xếp theo điểm đánh giá; lọc "Từ 4★" (quán + món) | MVP | ✅ |
 | G4 | Báo cáo đánh giá vi phạm, khiếu nại có ảnh | ⏭️ | ⬜ |
 
 ### H. Báo cáo
 
 | # | Chức năng | Phạm vi | Trạng thái |
 |---|---|---|---|
-| H1 | Dashboard quán: số đơn, doanh thu, giá trị đơn TB, top món | MVP | ⬜ |
-| H2 | Dashboard admin: số quán, số đơn, doanh thu nền tảng | MVP | ⬜ |
+| H1 | Dashboard quán: số đơn, doanh thu, giá trị đơn TB, top món | MVP | ✅ |
+| H2 | Dashboard admin: số quán, số đơn, doanh thu nền tảng | MVP | ✅ |
 | H3 | Giờ cao điểm, tỷ lệ khách quay lại, so sánh chi nhánh, xuất file | ⏭️ | ⬜ |
 
 ### I. Thông báo & Cấu hình
 
 | # | Chức năng | Phạm vi | Trạng thái |
 |---|---|---|---|
-| I1 | Thông báo trong app (lưu DB + đẩy Socket.IO) — gồm báo duyệt/từ chối quán | MVP | 🟡 (đẩy realtime ✅, lưu DB + chuông ⬜) |
+| I1 | Thông báo trong app (lưu DB + đẩy Socket.IO) — gồm báo duyệt/từ chối quán | MVP | ✅ |
 | I2 | Âm báo đơn mới trên trang quán | MVP | ✅ |
 | I3 | Audit log thao tác quan trọng | MVP rút gọn | 🟡 duyệt/từ chối/khóa/mở quán, đổi hoa hồng, đổi giá món ✅ · hủy đơn, khóa user ⬜ |
 | I4 | Push FCM, email, SMS, Zalo | ⏭️ | ⬜ |
@@ -344,15 +346,15 @@ Mọi chuyển khác → lỗi `409 INVALID_STATUS_TRANSITION`. Mỗi lần chuy
 |---|---|---|
 | BR-50 | Mọi số tiền là **số nguyên VND** (validate ở cả route và model). | ✅ (quán, menu) |
 | BR-51 | `commissionAmount = round(subtotal × commissionRate)`; `commissionRate` mặc định 10%, lưu trên quán, **chỉ admin sửa**, snapshot vào đơn. | 🟡 (lưu/sửa ✅, tính trên đơn ⬜) |
-| BR-52 | Doanh thu quán chỉ tính đơn `COMPLETED`. | ⬜ |
+| BR-52 | Doanh thu quán chỉ tính đơn `COMPLETED` (theo ngày đặt, giờ VN). | ✅ |
 | BR-53 | (⏭️) Ví dùng ledger chỉ-ghi-thêm: không sửa số dư trực tiếp. | ⏭️ |
 
 ### Đánh giá
 
 | Mã | Quy tắc | |
 |---|---|---|
-| BR-60 | Chỉ khách của đơn `COMPLETED` mới được đánh giá, **1 đánh giá / đơn**, trong 7 ngày. | ⬜ |
-| BR-61 | Quán trả lời mỗi đánh giá 1 lần (sửa được). `ratingAvg`/`ratingCount` của quán cập nhật khi có đánh giá mới. | ⬜ |
+| BR-60 | **(Đổi 08/10/2026)** Đánh giá **chung cho quán**, không theo đơn: chỉ khách đã có ≥ 1 đơn `COMPLETED` ở quán mới được viết; **1 đánh giá / khách / quán**, sửa / xóa được; 1–5 sao + nhận xét ≤ 1000 ký tự, ai mở trang quán cũng xem được (tên rút gọn "An N."). | ✅ |
+| BR-61 | Quán trả lời mỗi đánh giá 1 lần (sửa được). `ratingAvg` = trung bình cộng (hiển thị), `ratingScore` = điểm có trọng số `(n×avg + 5×3.5)/(n+5)` dùng xếp hạng; tính lại mỗi khi viết / sửa / xóa / ẩn đánh giá. Admin ẩn → không hiện, không tính điểm. | ✅ |
 
 ### Hệ thống
 
@@ -376,7 +378,7 @@ Chi tiết schema, index, ràng buộc: xem **[database.md](database.md)**.
 | Đơn hàng | `orders` (nhúng items + statusHistory), `idempotencykeys` | ⬜ | — |
 | Khuyến mãi | `vouchers` | ⬜ | `promotions` |
 | Tài chính | (số tiền nằm trên `orders`) | ⬜ | `wallets`, `walletTransactions`, `payouts`, `settlements` |
-| Khác | `auditlogs` ✅, `reviews` ⬜, `notifications` ⬜ | 🟡 | — |
+| Khác | `auditlogs` ✅, `reviews` ✅, `notifications` ✅ | ✅ | — |
 
 ---
 
@@ -412,15 +414,15 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 | 3.2 | Quán: hồ sơ DRAFT→SUBMITTED, giờ mở cửa, bật/tắt nhận đơn, upload ảnh/giấy tờ; Admin duyệt/từ chối/khóa + audit log | 3.1 | Owner tạo quán → Admin duyệt → quán hiện ra | ✅ |
 | 3.3 | Menu: danh mục, món, biến thể, topping, hết hàng/giới hạn ngày; API public xem quán, menu, tìm món; seed demo | 3.2 | BE ✅ — FE `/menu` đọc từ API ✅ | ✅ |
 | 3.4 | Đặt đơn: tính giá phía server, trừ tồn kho nguyên tử, idempotency, voucher | 3.3 | FE checkout gọi API, bỏ `OrderContext` localStorage | 🟡 (voucher ⬜) |
-| 3.5 | Xử lý đơn: state machine, Socket.IO, job timeout 5 phút + reset suất 00:00, thông báo | 3.4 | Demo 2 trình duyệt: khách đặt → quán nhận realtime | ✅ (thông báo lưu DB ⬜ → API-7) |
+| 3.5 | Xử lý đơn: state machine, Socket.IO, job timeout 5 phút + reset suất 00:00, thông báo | 3.4 | Demo 2 trình duyệt: khách đặt → quán nhận realtime | ✅ |
 
 ### P4 — Vận hành (23/10 – 29/10)
 
 | Bước | Việc | Đầu ra | |
 |---|---|---|---|
 | 4.1 | Thanh toán: COD hoàn chỉnh (`paymentStatus`); VNPay sandbox nếu dư thời gian | Đơn COMPLETED → PAID | ⬜ |
-| 4.2 | Doanh thu & hoa hồng: dashboard quán, thống kê admin | Trang `/owner/dashboard` có số liệu thật | ⬜ |
-| 4.3 | Đánh giá + trả lời, thông báo trong app, admin khóa user | Luồng đánh giá chạy đủ | ⬜ (audit log ✅) |
+| 4.2 | Doanh thu & hoa hồng: dashboard quán, thống kê admin | Trang `/owner/dashboard` có số liệu thật | ✅ |
+| 4.3 | Đánh giá + trả lời, thông báo trong app, admin khóa user | Luồng đánh giá chạy đủ | ✅ |
 
 ### P5 — Kiểm thử & phát hành (29/10 – 02/11)
 
@@ -449,7 +451,7 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 | 3 | Khách chọn món, chọn size/topping, áp voucher, đặt đơn COD. | 🟡 (đặt đơn COD ✅, voucher ⬜) |
 | 4 | Trang quán **kêu chuông** và hiện đơn mới không cần F5; quán nhận → chuẩn bị → sẵn sàng → đang giao → hoàn thành; khách thấy trạng thái đổi realtime. | ✅ |
 | 5 | Đơn không được phản hồi 5 phút → tự hủy, tồn kho được hoàn. | ✅ |
-| 6 | Khách đánh giá, quán trả lời; dashboard quán hiện doanh thu đúng. | ⬜ |
+| 6 | Khách đánh giá, quán trả lời; dashboard quán hiện doanh thu đúng. | ✅ |
 | 7 | Owner A không đọc/sửa được menu hoặc đơn của quán B (test tự động). | ✅ |
 
 ---
@@ -475,6 +477,7 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 | Câu hỏi | Đề xuất của tài liệu này | Quyết định |
 |---|---|---|
 | Ai giao hàng — tài xế nền tảng hay quán tự giao? | Quán tự giao (bỏ trạng thái PICKED_UP) | ✅ **Quán tự giao** (06/10/2026) |
+| Xác thực khi đăng ký? | OTP email / SĐT | ✅ **Chỉ email, mã 6 số qua Gmail** (08/10/2026); SĐT để sau |
 | Phí giao hàng? | Quán tự cấu hình | ✅ **Miễn phí hoàn toàn cho khách** (06/10/2026) — bỏ `deliveryFee` khỏi hồ sơ quán; `orders.deliveryFee` luôn = 0 |
 | Mô hình hoa hồng? | Cố định 10%, lưu `commissionRate` trên từng quán (admin sửa được — đã code) | |
 | Hình thức thanh toán, ai giữ tiền? | MVP chỉ COD, quán giữ tiền | |
@@ -489,7 +492,7 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 | Việc | Ghi chú |
 |---|---|
 | Lưu ảnh khi deploy | Ổ đĩa của Render/Railway không bền → đổi `upload.middleware.js` sang Cloudinary. |
-| Swagger `/api/docs`, rate limit `/auth/*`, `helmet` | Thuộc API-0 / API-10, chưa làm. |
+| Swagger `/api/docs` | Thuộc API-10, chưa làm (rate limit + `helmet` ✅ 08/10). |
 
 ---
 
@@ -506,6 +509,12 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 | 6b — API-4 (public) | 06/10/2026 | `/api/restaurants`, `/api/restaurants/:idOrSlug/menu`, `/api/menu-items` (tìm không dấu, lọc, sắp xếp), `npm run seed:demo` | 146 |
 | 7a — API-5 (đặt đơn) | 06/10/2026 | `orders`, `idempotencykeys`, `counters`; `/api/orders/preview`, `POST/GET /api/orders`, hủy đơn; trừ suất trong transaction; sửa lỗi 500 khi khóa/mở quán không có body; migration 001 bổ sung `nameNoAccent` + `--dry-run` (đã chạy trên DB thật); CI: `--passWithNoTests` ở gốc + job `frontend-build` | 160 |
 | 8 — API-6 (xử lý đơn + realtime) | 06/10/2026 | Quyết định: quán tự giao, miễn phí giao (bỏ `deliveryFee` khỏi quán); `orderStateMachine.js`; `/api/merchant/orders` (nhận, từ chối, chuyển bước, hủy; COMPLETED → PAID); Socket.IO (`order:new`, `order:status_changed`, `restaurant:status_changed`); node-cron hủy đơn quá 5' + reset suất 00:00; `verifyToken` dùng chung REST/socket; `FORBIDDEN` có `code`; FE: màn nhận đơn `/owner/orders` (âm báo, đếm ngược), khách theo dõi realtime | 178 |
+| 9 — Bảo mật P0 | 08/10/2026 | Rate limit đăng nhập/đăng ký/đổi mật khẩu (`TRUST_PROXY`), `helmet`, body ≤ 100kb, mật khẩu ≥ 8 ký tự + chặn mật khẩu phổ biến, kiểm tra magic bytes file upload, `seed:admin` bỏ mật khẩu mặc định (≥ 12 ký tự, `--reset-password`), server từ chối `JWT_SECRET` < 32 ký tự | 184 |
+| 10 — API-7 (thông báo) | 08/10/2026 | `notifications` (TTL 90 ngày), `/api/notifications` (danh sách + `unreadCount`, đã đọc 1 / tất cả), thông báo cho đơn mới, đổi trạng thái đơn, nộp / duyệt / từ chối / khóa / mở khóa quán, socket `notification:new`; FE: chuông thông báo ở header khách, chủ quán, admin | 190 |
+| 11 — API-8 (đánh giá) | 08/10/2026 | Đánh giá chung cho quán (đổi BR-60): 1–5 sao, 1 / khách / quán, phải có đơn hoàn thành; `reviews`, `ratingScore` (Bayes), `/api/restaurants/:idOrSlug/reviews[/me]`, `/api/merchant/reviews`, `/api/admin/reviews`; lọc `minRating`; thông báo `REVIEW_NEW` + mời đánh giá khi đơn hoàn thành; migration 002; FE: thẻ quán + lọc "Từ 4★" ở `/menu`, phần đánh giá trên trang quán, trang Đánh giá cho chủ quán và admin | 204 |
+| 12 — OTP email | 08/10/2026 | Đăng ký bằng email phải xác thực mã OTP 6 số gửi qua Gmail (`nodemailer`; chế độ `log` khi chưa cấu hình); `/api/auth/otp/send`, `/api/auth/otp/verify` → vé 15 phút; mã băm HMAC, 5 phút, 5 lần sai, gửi lại sau 60 s, ≤ 5 mã / giờ; `users.emailVerified`; SĐT chưa áp dụng OTP; FE: bước nhập mã trong form đăng ký | 214 |
+| 13 — Quên mật khẩu | 09/10/2026 | `/api/auth/password/forgot` + `/password/reset`: mã 6 số qua Gmail (mục đích `RESET_PASSWORD`, tách khỏi mã đăng ký), không lộ email nào đã đăng ký, đặt lại → đăng xuất mọi phiên + email báo đã đổi; FE: link "Quên mật khẩu?" ở trang đăng nhập của khách / chủ quán / admin | 221 |
+| 14 — API-9 (báo cáo + admin) | 09/10/2026 | `/api/merchant/reports/{summary,revenue,top-items}`, `/api/admin/reports/summary`, `/api/admin/users` (+ khóa / mở, khóa chủ quán → tắt nhận đơn), `/api/admin/orders`; khoảng ngày giờ VN, doanh thu chỉ đơn hoàn thành; FE: `/owner/dashboard`, `/admin/stats` (biểu đồ cột doanh thu + bảng), `/admin/users`, `/admin/orders`, trang Tài khoản (đổi mật khẩu) cho chủ quán / admin | 230 |
 
 **Lệnh hay dùng (trong `backend/`):**
 
@@ -516,4 +525,5 @@ npm run seed:admin     # tạo tài khoản ADMIN
 npm run seed:demo      # tạo 3 quán demo + 16 món + tài khoản demo
 npm run db:init-replset # MongoDB cài trên máy: bật replica set 1 node (đặt đơn cần transaction)
 npm run migrate:001    # chuyển dữ liệu quán cũ sang trạng thái mới (thêm `-- --dry-run` để xem trước)
+npm run migrate:002    # tính điểm đánh giá / ratingScore cho quán có sẵn (API-8)
 ```

@@ -67,15 +67,19 @@ test('quán nhận order:new; khách và quán nhận order:status_changed; quá
     otherConn.socket.onAny(() => { otherGotSomething = true; });
 
     const newOrder = nextEvent(ownerConn.socket, 'order:new');
+    const bell = nextEvent(ownerConn.socket, 'notification:new');
     const order = await placeOrder(customer, shop, { qty: 2 });
     expect(await newOrder).toMatchObject({ orderId: order.id, code: order.code, total: 70000, itemsCount: 2 });
+    expect(await bell).toMatchObject({ type: 'ORDER_NEW', title: `Đơn mới ${order.code}`, isRead: false, id: expect.any(String) });
 
     const toCustomer = nextEvent(customerConn.socket, 'order:status_changed');
+    const customerBell = nextEvent(customerConn.socket, 'notification:new');
     const toOwner = nextEvent(ownerConn.socket, 'order:status_changed');
     await as(shop.ownerToken).post(`/api/merchant/orders/${order.id}/accept`).expect(200);
 
     const expected = { orderId: order.id, from: 'PLACED', to: 'ACCEPTED', actorType: 'OWNER' };
     expect(await toCustomer).toMatchObject(expected);
     expect(await toOwner).toMatchObject(expected);
+    expect(await customerBell).toMatchObject({ type: 'ORDER_STATUS', data: { link: '/orders' } });
     expect(otherGotSomething).toBe(false);
 });

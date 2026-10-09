@@ -1,5 +1,6 @@
 const request = require('supertest');
 const app = require('../../src/app');
+const { issueVerificationToken } = require('../../src/modules/auth/otp.service');
 
 let counter = 0;
 
@@ -9,12 +10,14 @@ const createUserAndLogin = async (overrides = {}) => {
     const body = {
         fullName: `User ${counter}`,
         email: `user${counter}@test.com`,
-        password: '123456',
+        password: 'Test@1234',
         role: 'CUSTOMER',
         ...overrides
     };
 
-    await request(app).post('/api/auth/register').send(body).expect(201);
+    // Đăng ký bằng email cần vé xác thực OTP: test cấp thẳng vé (luồng OTP đầy đủ ở tests/auth/otp.test.js)
+    const verificationToken = body.email ? issueVerificationToken(body.email) : undefined;
+    await request(app).post('/api/auth/register').send({ ...body, verificationToken }).expect(201);
 
     const res = await request(app)
         .post('/api/auth/login')
@@ -34,14 +37,14 @@ const createAdminAndLogin = async () => {
 
     await User.create({
         email,
-        password: await bcrypt.hash('123456', 4),
+        password: await bcrypt.hash('Test@1234', 4),
         fullName: `Admin ${counter}`,
         role: 'ADMIN'
     });
 
     const res = await request(app)
         .post('/api/auth/login')
-        .send({ identifier: email, password: '123456' })
+        .send({ identifier: email, password: 'Test@1234' })
         .expect(200);
 
     return res.body.data;

@@ -8,14 +8,21 @@ import LandingPage from './pages/LandingPage';
 import MenuPage from './pages/MenuPage';
 import OrdersPage from './pages/OrdersPage';
 import RestaurantPage from './pages/RestaurantPage';
+import StaffAccountPage from './pages/StaffAccountPage';
 import AdminAuditLogsPage from './pages/admin/AdminAuditLogsPage';
+import AdminOrdersPage from './pages/admin/AdminOrdersPage';
+import AdminStatsPage from './pages/admin/AdminStatsPage';
+import AdminUsersPage from './pages/admin/AdminUsersPage';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminRestaurantDetailPage from './pages/admin/AdminRestaurantDetailPage';
 import AdminRestaurantsPage from './pages/admin/AdminRestaurantsPage';
+import AdminReviewsPage from './pages/admin/AdminReviewsPage';
+import OwnerDashboardPage from './pages/owner/OwnerDashboardPage';
 import OwnerLayout from './pages/owner/OwnerLayout';
 import OwnerMenuPage from './pages/owner/OwnerMenuPage';
 import OwnerOrdersPage from './pages/owner/OwnerOrdersPage';
 import OwnerProfilePage from './pages/owner/OwnerProfilePage';
+import OwnerReviewsPage from './pages/owner/OwnerReviewsPage';
 
 export default function App() {
   return (
@@ -39,6 +46,9 @@ export default function App() {
           <Route index element={<OwnerProfilePage />} />
           <Route path="menu" element={<OwnerMenuPage />} />
           <Route path="orders" element={<OwnerOrdersPage />} />
+          <Route path="reviews" element={<OwnerReviewsPage />} />
+          <Route path="dashboard" element={<OwnerDashboardPage />} />
+          <Route path="account" element={<StaffAccountPage />} />
         </Route>
       </Route>
 
@@ -48,6 +58,11 @@ export default function App() {
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<AdminRestaurantsPage />} />
           <Route path="restaurants/:id" element={<AdminRestaurantDetailPage />} />
+          <Route path="stats" element={<AdminStatsPage />} />
+          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="orders" element={<AdminOrdersPage />} />
+          <Route path="reviews" element={<AdminReviewsPage />} />
+          <Route path="account" element={<StaffAccountPage />} />
           <Route path="audit-logs" element={<AdminAuditLogsPage />} />
         </Route>
       </Route>

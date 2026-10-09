@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate, useOutletContext } from 'react-router-dom
 import { getErrorMessage } from '../../api/client';
 import { merchantApi } from '../../api/merchant';
 import Logo from '../../components/Logo';
+import NotificationBell from '../../components/NotificationBell';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket, useSocketEvent } from '../../context/SocketContext';
 import { useToast } from '../../context/ToastContext';
@@ -97,6 +98,9 @@ export default function OwnerLayout() {
             <NavLink to="/owner" end className="nav-link">Hồ sơ quán</NavLink>
             <NavLink to="/owner/menu" className="nav-link">Thực đơn</NavLink>
             <NavLink to="/owner/orders" className="nav-link">{ordersLabel}</NavLink>
+            <NavLink to="/owner/reviews" className="nav-link">Đánh giá</NavLink>
+            <NavLink to="/owner/dashboard" className="nav-link">Thống kê</NavLink>
+            <NavLink to="/owner/account" className="nav-link">Tài khoản</NavLink>
             {restaurant && <span className={`status-chip s-${restaurant.status}`}>{STATUS_LABEL[restaurant.status]}</span>}
             {restaurant && (
               <button
@@ -108,9 +112,11 @@ export default function OwnerLayout() {
                 {soundOn ? 'Âm báo bật' : 'Bật âm báo'}
               </button>
             )}
+            <NotificationBell />
             <button
               className="btn-outline"
-              onClick={() => { logout(); notify('Đã đăng xuất'); navigate('/'); }}
+              // Đăng xuất -> về trang đầu; replace để nút Back không quay lại trang cần đăng nhập
+              onClick={() => { logout(); notify('Đã đăng xuất'); navigate('/', { replace: true }); }}
               title={user?.email || user?.phone}
             >
               Đăng xuất
@@ -122,6 +128,9 @@ export default function OwnerLayout() {
           <NavLink to="/owner" end>Hồ sơ quán</NavLink>
           <NavLink to="/owner/menu">Thực đơn</NavLink>
           <NavLink to="/owner/orders">{ordersLabel}</NavLink>
+          <NavLink to="/owner/reviews">Đánh giá</NavLink>
+          <NavLink to="/owner/dashboard">Thống kê</NavLink>
+          <NavLink to="/owner/account">Tài khoản</NavLink>
         </nav>
       </header>
 

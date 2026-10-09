@@ -10,6 +10,7 @@ const AppError = require('../../utils/AppError');
 const { canAcceptOrders, toLocalDateKey } = require('../../utils/openingHours');
 const { canOwnerAdvance } = require('./orderStateMachine');
 const { emitOrderNew, emitOrderStatusChanged } = require('../../realtime/socket');
+const notifications = require('../notification/notification.service');
 
 // Quán đang nhận đơn (BR-12, BR-13). Quán chưa duyệt coi như không tồn tại với khách.
 const findOrderableRestaurant = async (restaurantId, session = null) => {
@@ -159,8 +160,9 @@ const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, 
         throw error;
     }
 
-    // 8. Sau khi commit: trang quán kêu chuông (TODO API-7: tạo notification)
+    // 8. Sau khi commit: trang quán kêu chuông + lưu thông báo cho chủ quán
     emitOrderNew(order);
+    await notifications.orderPlaced(order);
     return { order, replayed: false };
 };
 
@@ -212,6 +214,7 @@ const transitionAndRelease = async (args) => {
     });
 
     emitOrderStatusChanged(order);
+    await notifications.orderStatusChanged(order);
     return order;
 };
 
@@ -243,6 +246,7 @@ const acceptByOwner = async ({ orderId, restaurant, userId }) => {
     });
 
     emitOrderStatusChanged(order);
+    await notifications.orderStatusChanged(order);
     return order;
 };
 
@@ -297,6 +301,7 @@ const advanceByOwner = async ({ orderId, restaurant, userId, to }) => {
     });
 
     emitOrderStatusChanged(order);
+    await notifications.orderStatusChanged(order);
     return order;
 };
 

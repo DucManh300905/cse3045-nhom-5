@@ -200,6 +200,9 @@ export default function OrdersPage() {
                           ? <>Giao đến: {o.delivery.receiverName} · {o.delivery.phone} · {o.delivery.addressLine}{o.delivery.note && <> · <i>{o.delivery.note}</i></>}</>
                           : 'Tự đến lấy tại quán'}
                       </p>
+                      {o.status === 'COMPLETED' && o.restaurantSnapshot.slug && (
+                        <Link to={`/restaurants/${o.restaurantSnapshot.slug}#reviews`} className="btn-soft">★ Đánh giá quán</Link>
+                      )}
                       {o.status === 'PLACED' && (
                         <button className="btn-outline danger-outline" onClick={() => cancel(o)} disabled={busyId === o.id}>
                           {busyId === o.id ? 'Đang hủy...' : 'Hủy đơn'}

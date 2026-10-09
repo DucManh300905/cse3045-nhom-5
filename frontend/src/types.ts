@@ -275,3 +275,132 @@ export interface MerchantOrder extends Order {
 }
 
 export type OwnerReasonCode = 'OUT_OF_STOCK' | 'OVERLOADED' | 'CLOSED' | 'OTHER';
+
+// ================= Thông báo (/notifications, docs/API.md mục 2.8) =================
+
+export type NotificationType =
+  | 'ORDER_NEW'
+  | 'ORDER_STATUS'
+  | 'RESTAURANT_SUBMITTED'
+  | 'RESTAURANT_APPROVED'
+  | 'RESTAURANT_REJECTED'
+  | 'RESTAURANT_BLOCKED'
+  | 'RESTAURANT_UNBLOCKED'
+  | 'REVIEW_NEW';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body?: string;
+  /** link: trang mở khi bấm vào thông báo */
+  data: { orderId?: string; restaurantId?: string; code?: string; link?: string };
+  isRead: boolean;
+  createdAt: string;
+}
+
+// ================= Đánh giá quán (API-8): 1–5 sao, mỗi khách 1 đánh giá / quán =================
+
+export interface Review {
+  id: string;
+  rating: number;
+  comment?: string;
+  /** Tên rút gọn, vd "An N." */
+  author: string;
+  reply?: { content: string; repliedAt: string };
+  createdAt: string;
+  updatedAt: string;
+  /** Chỉ có ở phía chủ quán / admin / đánh giá của chính mình */
+  isHidden?: boolean;
+  hiddenReason?: string;
+}
+
+export interface ReviewSummary {
+  ratingAvg: number;
+  ratingCount: number;
+  /** Số lượt theo mức sao 1..5 */
+  distribution: Record<'1' | '2' | '3' | '4' | '5', number>;
+}
+
+export interface AdminReview extends Review {
+  customer: { id: string; fullName: string; email?: string } | null;
+  restaurant: { id: string; name: string; slug: string } | null;
+}
+
+// ================= Báo cáo (API-9) =================
+
+export interface ReportRange {
+  from: string;
+  to: string;
+  days: number;
+}
+
+export interface ReportTotals {
+  totalOrders: number;
+  completedOrders: number;
+  cancelledOrders: number;
+  activeOrders: number;
+  itemsSold: number;
+  /** Tổng tiền đơn hoàn thành */
+  grossRevenue: number;
+  commission: number;
+  netRevenue: number;
+  avgOrderValue: number;
+  /** 0–1, trên các đơn đã kết thúc */
+  cancelRate: number;
+}
+
+export interface MerchantSummary extends ReportTotals {
+  range: ReportRange;
+  commissionRate: number;
+  ratingAvg: number;
+  ratingCount: number;
+}
+
+export type GroupBy = 'day' | 'week' | 'month';
+
+export interface RevenuePoint {
+  /** Ngày đầu kỳ YYYY-MM-DD */
+  period: string;
+  orders: number;
+  completedOrders: number;
+  grossRevenue: number;
+  commission: number;
+  netRevenue: number;
+}
+
+export interface TopItem {
+  menuItemId: string;
+  name: string;
+  qty: number;
+  revenue: number;
+  orders: number;
+}
+
+export interface AdminSummary {
+  range: ReportRange;
+  orders: ReportTotals;
+  gmv: number;
+  platformRevenue: number;
+  restaurants: { byStatus: Partial<Record<RestaurantStatus, number>>; total: number };
+  users: { byRole: Partial<Record<Role, number>>; blocked: number; newInRange: number };
+  series: RevenuePoint[];
+  topRestaurants: { restaurantId: string; name: string; slug?: string; completedOrders: number; grossRevenue: number; commission: number }[];
+}
+
+export interface AdminUser {
+  id: string;
+  fullName: string;
+  email?: string;
+  phone?: string;
+  role: Role;
+  status: 'ACTIVE' | 'BLOCKED';
+  emailVerified: boolean;
+  createdAt: string;
+  restaurant: { id: string; name: string; slug: string; status: RestaurantStatus } | null;
+}
+
+export interface AdminOrder extends Omit<Order, 'customer'> {
+  customer: { id: string; fullName: string; email?: string; phone?: string } | null;
+  commissionAmount: number;
+}

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { assetUrl, getErrorMessage } from '../api/client';
 import { menuApi } from '../api/menu';
 import AppHeader from '../components/AppHeader';
 import CartDrawer from '../components/CartDrawer';
 import FoodCard from '../components/FoodCard';
 import ItemOptionsModal from '../components/ItemOptionsModal';
+import RestaurantReviews from '../components/RestaurantReviews';
+import { RatingBadge } from '../components/Stars';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useToast } from '../context/ToastContext';
@@ -36,15 +38,26 @@ export default function RestaurantPage() {
   const [choosing, setChoosing] = useState<MenuItem | null>(null);
   const closeChooser = useCallback(() => setChoosing(null), []);
 
+  const { hash } = useLocation();
+  const [version, setVersion] = useState(0);
+
   useEffect(() => {
     let ignore = false;
-    setRestaurant(null);
+    if (version === 0) setRestaurant(null);
     setError('');
     menuApi.getRestaurantMenu(slug)
       .then(res => { if (!ignore) { setRestaurant(res.restaurant); setCategories(res.categories); } })
       .catch(err => { if (!ignore) setError(getErrorMessage(err)); });
     return () => { ignore = true; };
-  }, [slug]);
+  }, [slug, version]);
+
+  // Mở từ thông báo "Bấm để đánh giá quán" (#reviews) -> cuộn xuống phần đánh giá khi trang đã tải
+  const loaded = !!restaurant;
+  useEffect(() => {
+    if (loaded && hash === '#reviews') {
+      window.setTimeout(() => document.getElementById('reviews')?.scrollIntoView({ behavior: 'smooth' }), 100);
+    }
+  }, [loaded, hash]);
 
   const goCheckout = () => {
     setCartOpen(false);
@@ -92,9 +105,10 @@ export default function RestaurantPage() {
               <li><small>Giờ mở cửa</small><b>{todayHours(restaurant)}</b></li>
               <li><small>Giao hàng</small><b>Quán tự giao · Miễn phí</b></li>
               <li><small>Đơn tối thiểu</small><b>{restaurant.minOrderAmount ? formatPrice(restaurant.minOrderAmount) : 'Không'}</b></li>
-              {restaurant.ratingCount > 0 && (
-                <li><small>Đánh giá</small><b>★ {restaurant.ratingAvg.toFixed(1)} ({restaurant.ratingCount})</b></li>
-              )}
+              <li>
+                <small>Đánh giá</small>
+                <a href="#reviews" className="fact-link"><RatingBadge avg={restaurant.ratingAvg} count={restaurant.ratingCount} /></a>
+              </li>
             </ul>
 
             {categories.length === 0 ? (
@@ -119,6 +133,8 @@ export default function RestaurantPage() {
                 ))}
               </>
             )}
+
+            <RestaurantReviews restaurant={restaurant} onRatingChange={() => setVersion(v => v + 1)} />
           </>
         )}
       </main>

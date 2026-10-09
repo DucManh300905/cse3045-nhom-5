@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import Logo from './Logo';
+import NotificationBell from './NotificationBell';
 import UserMenu from './UserMenu';
 
 interface Props {
@@ -36,6 +37,7 @@ export default function AppHeader({ search, cart }: Props) {
               {cart.count > 0 && <span className="cart-count">{cart.count}</span>}
             </button>
           )}
+          <NotificationBell />
           <UserMenu />
         </nav>
       </div>

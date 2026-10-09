@@ -10,6 +10,8 @@ export interface MenuItemQuery {
   /** id quán */
   restaurant?: string;
   inStock?: boolean;
+  /** Chỉ món của quán từ N★ trở lên */
+  minRating?: number;
   sort?: 'popular' | 'price' | '-price' | 'newest';
   page?: number;
   limit?: number;
@@ -19,6 +21,8 @@ export interface RestaurantQuery {
   q?: string;
   cuisine?: string;
   isOpen?: boolean;
+  /** Chỉ quán từ N★ trở lên (đã có đánh giá) */
+  minRating?: number;
   sort?: 'rating' | 'name' | 'newest';
   page?: number;
   limit?: number;

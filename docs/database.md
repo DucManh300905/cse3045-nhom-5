@@ -169,7 +169,7 @@ File: `modules/order/order.model.js` · tính tiền `order.pricing.js` · đặ
 | `cancelReason` | `{ code, note }` | `OUT_OF_STOCK`, `OVERLOADED`, `CLOSED`, `CUSTOMER_CHANGED_MIND`, `TIMEOUT`, `OTHER` |
 | `estimatedReadyAt` | Date | = acceptedAt + avgPrepMinutes |
 | `placedAt`, `acceptedAt`, `completedAt`, `cancelledAt` | Date | phục vụ báo cáo |
-| `isReviewed` | Boolean | BR-60 |
+| `isReviewed` | Boolean | Không dùng (đánh giá theo quán từ 08/10) |
 
 `OrderItem`: `{ menuItem (ObjectId), name, imageUrl, variant?: { _id, name, price }, options: [{ _id, groupName, name, price }], unitPrice, qty, lineTotal, note }`
 với `unitPrice = (variant.price ?? basePrice) + Σ options.price`, `lineTotal = unitPrice × qty`.
@@ -212,24 +212,30 @@ Index: `{ user: 1, key: 1 } unique` (BR-38).
 
 Index: `{ restaurant: 1, code: 1 } unique`. Đếm lượt dùng của 1 user: `orders.countDocuments({ customer, 'voucher.voucherId', status: { $nin: ['REJECTED','CANCELLED'] } })`.
 
-### 3.8 `reviews` ⬜
+### 3.8 `reviews` ✅ (đổi 08/10/2026: đánh giá theo quán, không theo đơn)
+
+File: `modules/review/review.model.js` · tính điểm: `review.service.js`.
 
 | Field | Kiểu | Ghi chú |
 |---|---|---|
-| `order` | ObjectId | **unique** (BR-60) |
-| `restaurant`, `customer` | ObjectId | |
+| `restaurant`, `customer` | ObjectId | **unique cặp** — 1 đánh giá / khách / quán (BR-60) |
 | `rating` | Int 1–5 | |
-| `comment` | String | ≤ 1000 ký tự |
+| `comment` | String | ≤ 1000 ký tự, hiện công khai |
 | `images` | [String] | ⏭️ |
 | `reply` | `{ content, repliedAt }` | BR-61 |
-| `isHidden` | Boolean | admin ẩn vi phạm |
+| `isHidden`, `hiddenReason` | Boolean, String | admin ẩn vi phạm: không hiện, không tính điểm |
+| `createdAt`, `updatedAt` | Date | |
 
-Index: `{ order: 1 } unique`, `{ restaurant: 1, createdAt: -1 }`.
+Index: `{ restaurant: 1, customer: 1 } unique`, `{ restaurant: 1, isHidden: 1, updatedAt: -1 }`.
 
-### 3.9 `notifications` ⬜
+Trên `restaurants`: `ratingAvg` (TB cộng, 1 chữ số), `ratingCount`, `ratingScore` = `(n×avg + 5×3.5)/(n+5)` (mặc định 3.5) + index `{ status: 1, ratingScore: -1 }`. Quán có sẵn: `npm run migrate:002`.
 
-`{ user, type: 'ORDER_NEW'│'ORDER_STATUS'│'RESTAURANT_APPROVED'│'RESTAURANT_REJECTED'│'REVIEW_NEW', title, body, data: { orderId?, restaurantId? }, isRead, createdAt }`
-Index: `{ user: 1, isRead: 1, createdAt: -1 }`; TTL 90 ngày (tùy chọn).
+### 3.9 `notifications` ✅
+
+File: `modules/notification/notification.model.js` · tạo + đẩy realtime: `notification.service.js`.
+
+`{ user, type: 'ORDER_NEW'│'ORDER_STATUS'│'RESTAURANT_SUBMITTED'│'RESTAURANT_APPROVED'│'RESTAURANT_REJECTED'│'RESTAURANT_BLOCKED'│'RESTAURANT_UNBLOCKED'│'REVIEW_NEW', title, body, data: { orderId?, restaurantId?, code?, link? }, isRead, createdAt }`
+Index: `{ user: 1, isRead: 1, createdAt: -1 }`; TTL 90 ngày trên `createdAt` ✅.
 
 ### 3.10 `auditlogs` ✅
 
@@ -385,7 +391,7 @@ Mỗi bước: viết model → viết seed/test → chạy `syncIndexes` → ki
 | **DB-3** | 15/10 – 17/10 | `menucategories`, `menuitems` (variants, optionGroups, validate min/max); seed demo | Seed 3 quán × 16 món từ `menu.ts` | ✅ 06/10 |
 | **DB-4** | 17/10 – 20/10 | `orders`, `idempotencykeys`, `vouchers` + hàm 6.2, 6.3, 6.4 | Test: 5 request đặt món cuối cùng → chỉ 1 thành công | ⬜ **← tiếp theo** |
 | **DB-5** | 20/10 – 23/10 | Job `orderTimeout`, `dailyStockReset` | Đơn PLACED 5' tự hủy, tồn kho hoàn lại | ✅ 06/10 |
-| **DB-6** | 23/10 – 27/10 | `reviews`, `notifications`, `auditlogs`; cập nhật `ratingAvg` | Đánh giá trùng đơn bị chặn (unique) | 🟡 (`auditlogs` ✅ 06/10) |
+| **DB-6** | 23/10 – 27/10 | `reviews`, `notifications`, `auditlogs`; cập nhật `ratingAvg`, `ratingScore` | 1 đánh giá / khách / quán (unique) | ✅ 08/10 |
 | **DB-7** | 27/10 – 29/10 | Aggregation báo cáo: doanh thu theo ngày, top món, tỷ lệ hủy | So khớp số liệu với seed thủ công | ⬜ |
 | **DB-8** | 29/10 – 02/11 | Kiểm tra index bằng `explain()` cho 5 truy vấn chính, backup Atlas, migration M6 | Mọi truy vấn chính dùng IXSCAN | ⬜ |
 | DB-9 ⏭️ | sau MVP | `storeStaff`, `merchantDocuments`, ví/ledger, settlements | — | ⏭️ |
