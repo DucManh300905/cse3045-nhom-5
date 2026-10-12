@@ -234,7 +234,7 @@ Trên `restaurants`: `ratingAvg` (TB cộng, 1 chữ số), `ratingCount`, `rati
 
 File: `modules/notification/notification.model.js` · tạo + đẩy realtime: `notification.service.js`.
 
-`{ user, type: 'ORDER_NEW'│'ORDER_STATUS'│'RESTAURANT_SUBMITTED'│'RESTAURANT_APPROVED'│'RESTAURANT_REJECTED'│'RESTAURANT_BLOCKED'│'RESTAURANT_UNBLOCKED'│'REVIEW_NEW', title, body, data: { orderId?, restaurantId?, code?, link? }, isRead, createdAt }`
+`{ user, type: 'ORDER_NEW'│'ORDER_STATUS'│'RESTAURANT_SUBMITTED'│'RESTAURANT_APPROVED'│'RESTAURANT_REJECTED'│'RESTAURANT_BLOCKED'│'RESTAURANT_UNBLOCKED'│'REVIEW_NEW'│'WALLET_*'│'TOPUP_*'│'PAYOUT_*'│'PAYMENT_ISSUE'│'PAYMENT_UNMATCHED'│'REFUND_REQUESTED'│'REFUND_DONE', title, body, data: { orderId?, restaurantId?, code?, link? }, isRead, createdAt }`
 Index: `{ user: 1, isRead: 1, createdAt: -1 }`; TTL 90 ngày trên `createdAt` ✅.
 
 ### 3.10 `auditlogs` ✅
@@ -263,8 +263,56 @@ Index: `{ targetType: 1, targetId: 1, createdAt: -1 }`, `{ action: 1, createdAt:
 | `RESTAURANT_COMMISSION_CHANGE` | Admin đổi hoa hồng | ✅ |
 | `MENU_PRICE_CHANGE` | Chủ quán đổi giá món / biến thể (BR-27) | ✅ |
 | `RESTAURANT_PROFILE_CHANGE` | Quán đã duyệt đổi tên/địa chỉ (BR-14) | ⬜ |
-| `USER_BLOCK` / `USER_UNBLOCK` | Admin khóa user | ⬜ |
+| `USER_BLOCK` / `USER_UNBLOCK` | Admin khóa user | ✅ |
+| `TOPUP_CONFIRM` / `TOPUP_REJECT` | Admin xác nhận / từ chối lệnh nạp ví | ✅ |
+| `PAYOUT_PAID` / `PAYOUT_REJECT` | Admin đã chuyển / từ chối yêu cầu rút | ✅ |
+| `WALLET_ADJUST` | Admin điều chỉnh ví quán (kèm lý do) | ✅ |
+| `REFUND_DONE` | Admin đã hoàn tiền cho khách | ✅ |
+| `PAYMENT_REFUND` / `PAYMENT_IGNORE` | Admin xử lý giao dịch SePay không khớp | ✅ |
 | `ORDER_CANCEL` | Hủy đơn | ⬜ |
+
+---
+
+### 3.11 Ví đối soát: `wallets`, `walletentries`, `topups`, `payouts` ✅ (API-11, 11/10/2026)
+
+Thư mục `modules/wallet/`. Sổ cái kép: mỗi bút toán ≥ 2 dòng, tổng = 0; chỉ đổi số dư qua `wallet.service.postJournal`
+(trong transaction cùng thao tác gốc). Bảng bút toán: docs/API.md mục 2.10.
+
+**`wallets`** — `{ key (unique: 'PLATFORM' │ 'PAYOUT_HOLD' │ 'EXTERNAL' │ 'restaurant:<id>'), type: RESTAURANT│PLATFORM│PAYOUT_HOLD│EXTERNAL│ESCROW, restaurant?, balance (Int VND), negativeSince (Date│null) }`.
+Tạo lười (upsert) ở bút toán đầu tiên. `negativeSince` đặt khi ví quán vừa âm, xóa khi về `>= 0` — dùng tính hạn 3 ngày.
+Index `{ type: 1, balance: 1 }`.
+
+**`walletentries`** (BR-53, chỉ ghi thêm — `pre` hook chặn update / delete như `auditlogs`) —
+`{ journal, ref, wallet, walletType, restaurant?, kind: ORDER_SETTLE│TOPUP│PAYOUT_REQUEST│PAYOUT_PAID│PAYOUT_REJECT│ADJUSTMENT, amount (±Int), balanceAfter, order?, topup?, payout?, note, actor?, createdAt }`.
+Index unique `{ ref: 1, wallet: 1 }` (chống ghi trùng: `ORDER_SETTLE:<orderId>`, `TOPUP:<id>`...), `{ wallet: 1, createdAt: -1 }`, `{ restaurant: 1, createdAt: -1 }`.
+
+**`topups`** — `{ code (unique, NAP{yyMMdd}{seq} — bộ đếm `counters` 'topup:<ngày>'), restaurant, requestedBy, amount, receivedAmount?, status: PENDING│CONFIRMED│REJECTED│CANCELLED, bankRef?, rejectReason?, processedBy?, processedAt? }`.
+
+**`payouts`** — `{ restaurant, requestedBy, amount, bankAccount (snapshot), status: REQUESTED│PAID│REJECTED, bankRef?, rejectReason?, processedBy?, processedAt? }`.
+Index unique một phần `{ restaurant: 1 }` khi `status = REQUESTED` (mỗi quán một yêu cầu chờ).
+
+**Thêm vào `restaurants`:** `walletLockedAt` (Date│null), `walletLockReason` (`OVER_LIMIT`│`OVERDUE`│null), `bankAccount { bankName, accountNumber, accountName }`.
+`canAcceptOrders` = APPROVED + bật nhận đơn + **`!walletLockedAt`** + trong giờ mở cửa.
+
+Dữ liệu cũ: ví bắt đầu từ lúc triển khai — đơn đã hoàn thành trước đó không được ghi sổ (cần thì admin dùng điều chỉnh tay).
+
+---
+
+### 3.12 Trả trước: `payments`, `refunds` + trường mới trên `orders` ✅ (W2, 11/10/2026)
+
+Thư mục `modules/payment/`.
+
+**Thêm vào `orders`:** `status` có thêm `PENDING_PAYMENT`; `paymentMethod: COD│BANK_TRANSFER`; `paymentStatus: UNPAID│PAID│REFUND_PENDING│REFUNDED`;
+`paymentCode` (unique sparse, `MAK{yyMMdd}{seq}`), `paymentDeadline`, `paidAt`, `paidAmount`; `cancelReason.code` thêm `PAYMENT_TIMEOUT`.
+`placedAt = null` khi chờ thanh toán (quán / báo cáo lọc theo `placedAt`), gán = `paidAt` khi tiền về. Index `{ status: 1, paymentDeadline: 1 }`.
+
+**`payments`** — giao dịch SePay thô: `{ provider: 'SEPAY', providerTxId (unique 'SEPAY:<id>'), gateway, accountNumber, transferType, amount, content, code, referenceCode, transactionDate,
+status: PROCESSING│MATCHED_ORDER│MATCHED_TOPUP│LATE│UNDERPAID│DUPLICATE│UNMATCHED│REFUNDING│IGNORED, order?, topup?, note, resolvedBy?, resolvedAt? }`.
+Trạng thái được đổi trong cùng transaction với việc xác nhận đơn / nạp ví; lỗi giữa chừng → xóa bản ghi `PROCESSING` để SePay gửi lại.
+
+**`refunds`** — `{ order?, payment?, customer?, amount, reason: ORDER_CANCELLED│LATE_PAYMENT│UNDERPAID│OVERPAID│DUPLICATE│UNMATCHED, status: PENDING│DONE, note, bankRef?, processedBy?, processedAt? }`.
+
+**Ví hệ thống mới:** `ESCROW` (tiền khách trả trước chờ đơn hoàn thành), `REFUND_HOLD` (tiền phải hoàn). `walletentries.kind` thêm `ORDER_PAYMENT`, `REFUND_PENDING`, `REFUND_PAID`; thêm ref `payment`, `refund`.
 
 ---
 
@@ -289,12 +337,10 @@ Tên file là UUID ngẫu nhiên; thay ảnh/giấy tờ thì xóa file cũ. Khi
 | `storeStaff` | `{ restaurant, user, role: OWNER│MANAGER│CASHIER│ACCOUNTANT, status }` | Bỏ BR-10, middleware kiểm tra quyền theo quán |
 | `merchantDocuments` | Giấy tờ pháp lý, số tài khoản ngân hàng | Mã hóa field nhạy cảm (AES-256), URL ảnh có hạn |
 | `priceHistory` | `{ menuItem, oldPrice, newPrice, changedBy, at }` | MVP đang dùng audit log `MENU_PRICE_CHANGE` thay thế |
-| `wallets` | `{ restaurant, balance, pendingBalance }` | `balance` chỉ là cache, nguồn sự thật là ledger |
-| `walletTransactions` | `{ wallet, type: ORDER_INCOME│COMMISSION│PAYOUT│ADJUSTMENT, amount (±Int), order?, balanceAfter, createdAt }` | Ledger chỉ ghi thêm (BR-53) |
-| `payouts` | Yêu cầu rút tiền `{ restaurant, amount, bankSnapshot, status: REQUESTED│PAID│REJECTED }` | idempotency key |
+| `wallets`, `walletentries`, `topups`, `payouts` | ✅ đã làm (mục 3.11) | |
 | `settlements` | Đối soát theo kỳ `{ restaurant, periodFrom, periodTo, gross, commission, net, status }` | job hằng ngày |
 | `promotions` | Combo, flash sale, chương trình nền tảng | |
-| `payments` | Giao dịch VNPay, callback raw | |
+| `payments`, `refunds` | ✅ đã làm (mục 3.12) | |
 
 ---
 
@@ -360,6 +406,8 @@ await Order.findOneAndUpdate(
 | Job | Lịch | Việc |
 |---|---|---|
 | `orderTimeout` | mỗi phút | `PLACED` và `placedAt < now - 5'` → `CANCELLED` (actor SYSTEM, `cancelReason.code = TIMEOUT`), hoàn `soldToday` (BR-36, BR-37); hoàn `usedCount` voucher ⬜ |
+| `paymentTimeout` | mỗi phút | `PENDING_PAYMENT` và `paymentDeadline < now` → `CANCELLED` (`PAYMENT_TIMEOUT`), hoàn suất (W2) |
+| `walletLock` | phút 5 mỗi giờ | Ví quán âm quá `WALLET_CREDIT_LIMIT` hoặc âm từ trước `now − WALLET_GRACE_DAYS` → `walletLockedAt`; quán đang khóa có số dư `>= 0` → mở (API-11) |
 | `dailyStockReset` | 00:00 `Asia/Ho_Chi_Minh` | `MenuItem.updateMany({ soldToday: { $gt: 0 } }, { soldToday: 0 })` (BR-23) |
 
 ---

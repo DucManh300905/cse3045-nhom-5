@@ -11,6 +11,8 @@ const { canAcceptOrders, toLocalDateKey } = require('../../utils/openingHours');
 const { canOwnerAdvance } = require('./orderStateMachine');
 const { emitOrderNew, emitOrderStatusChanged } = require('../../realtime/socket');
 const notifications = require('../notification/notification.service');
+const wallet = require('../wallet/wallet.service');
+const payment = require('../payment/payment.service');
 
 // Quán đang nhận đơn (BR-12, BR-13). Quán chưa duyệt coi như không tồn tại với khách.
 const findOrderableRestaurant = async (restaurantId, session = null) => {
@@ -65,7 +67,8 @@ const reserveStock = async (qtyByItem, restaurantId, session) => {
 // Hoàn suất khi đơn bị hủy / từ chối (BR-37). soldToday chỉ hoàn nếu vẫn cùng ngày đặt
 // (sang ngày mới job reset đã đưa về 0, trừ tiếp sẽ sai số của ngày mới).
 const releaseStock = async (order, session) => {
-    const sameDay = toLocalDateKey(order.placedAt) === toLocalDateKey();
+    // Đơn trả trước hết hạn thanh toán chưa có placedAt -> lấy ngày tạo
+    const sameDay = toLocalDateKey(order.placedAt ?? order.createdAt) === toLocalDateKey();
     const qtyByItem = new Map();
     order.items.forEach((l) => qtyByItem.set(String(l.menuItem), (qtyByItem.get(String(l.menuItem)) || 0) + l.qty));
 
@@ -99,6 +102,12 @@ const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, 
         return { order: replay, replayed: true };
     }
 
+    // Trả trước: chỉ khi MAK đã cấu hình tài khoản nhận + webhook SePay
+    const prepaid = paymentMethod === 'BANK_TRANSFER';
+    if (prepaid && !payment.isBankTransferEnabled()) {
+        throw new AppError(422, 'PAYMENT_METHOD_UNAVAILABLE', 'Bank transfer is not available right now');
+    }
+
     let order;
 
     try {
@@ -115,11 +124,14 @@ const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, 
             await reserveStock(draft.qtyByItem, restaurant._id, session);
 
             // 7. Tạo đơn + snapshot + hoa hồng; lưu idempotency key
+            // Trả trước: chờ tiền về (PENDING_PAYMENT, chưa tới quán: placedAt = null), giữ suất tới hạn thanh toán
             const now = new Date();
+            const code = await nextOrderCode(session);
+            const initial = prepaid ? 'PENDING_PAYMENT' : 'PLACED';
             [order] = await Order.create(
                 [
                     {
-                        code: await nextOrderCode(session),
+                        code,
                         customer: userId,
                         restaurant: restaurant._id,
                         restaurantSnapshot: {
@@ -138,9 +150,13 @@ const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, 
                         commissionRate: restaurant.commissionRate,
                         commissionAmount: Math.round(draft.subtotal * restaurant.commissionRate),
                         paymentMethod,
-                        status: 'PLACED',
-                        placedAt: now,
-                        statusHistory: [{ to: 'PLACED', actorType: 'CUSTOMER', actor: userId, at: now }]
+                        ...(prepaid && {
+                            paymentCode: payment.toPaymentCode(code),
+                            paymentDeadline: new Date(now.getTime() + payment.paymentTimeoutMinutes() * 60 * 1000)
+                        }),
+                        status: initial,
+                        placedAt: prepaid ? null : now,
+                        statusHistory: [{ to: initial, actorType: 'CUSTOMER', actor: userId, at: now }]
                     }
                 ],
                 { session }
@@ -161,6 +177,10 @@ const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, 
     }
 
     // 8. Sau khi commit: trang quán kêu chuông + lưu thông báo cho chủ quán
+    // (đơn trả trước: đợi webhook xác nhận tiền mới báo quán — payment.service.confirmOrderPayment)
+    if (order.status === 'PENDING_PAYMENT') {
+        return { order, replayed: false };
+    }
     emitOrderNew(order);
     await notifications.orderPlaced(order);
     return { order, replayed: false };
@@ -207,29 +227,47 @@ const transitionOrder = async ({ orderId, filter, from, to, actorType, actor, re
  */
 const transitionAndRelease = async (args) => {
     let order;
+    let refund = null;
 
     await mongoose.connection.transaction(async (session) => {
         order = await transitionOrder({ ...args, session });
         await releaseStock(order, session);
+
+        // Khách đã chuyển khoản trả trước -> tạo lệnh hoàn tiền (ESCROW -> REFUND_HOLD)
+        if (order.paymentStatus === 'PAID') {
+            ({ order, refund } = await payment.refundPaidOrder(order, session));
+        } else {
+            refund = null;
+        }
     });
 
     emitOrderStatusChanged(order);
     await notifications.orderStatusChanged(order);
+    if (refund) {
+        await notifications.refundCreated(refund, order);
+    }
     return order;
 };
 
-// Khách hủy: chỉ khi quán chưa nhận (PLACED -> CANCELLED), hoàn suất
-const cancelByCustomer = ({ orderId, userId, note }) =>
-    transitionAndRelease({
+// Khách hủy: khi đang chờ thanh toán hoặc quán chưa nhận (-> CANCELLED), hoàn suất; đã trả tiền -> hoàn tiền
+const cancelByCustomer = async ({ orderId, userId, note }) => {
+    const current = await Order.findOne({ _id: orderId, customer: userId }).select('status');
+    if (!current) {
+        throw new AppError(404, 'NOT_FOUND', 'Order not found');
+    }
+
+    return transitionAndRelease({
         orderId,
         filter: { customer: userId },
-        from: 'PLACED',
+        // Trạng thái khác -> transitionOrder trả 409
+        from: current.status === 'PENDING_PAYMENT' ? 'PENDING_PAYMENT' : 'PLACED',
         to: 'CANCELLED',
         actorType: 'CUSTOMER',
         actor: userId,
         reason: note,
         set: { cancelReason: { code: 'CUSTOMER_CHANGED_MIND', note } }
     });
+};
 
 // ======================= Chủ quán (BR-35) =======================
 
@@ -288,18 +326,28 @@ const advanceByOwner = async ({ orderId, restaurant, userId, to }) => {
         throw new AppError(409, 'INVALID_STATUS_TRANSITION', `Cannot change order from ${current.status} to ${to}`);
     }
 
-    // `from` = trạng thái vừa đọc: nếu có người đổi trước (vd khách vừa hủy) thì 409
-    const order = await transitionOrder({
-        orderId,
-        filter: { restaurant: restaurant._id },
-        from: current.status,
-        to,
-        actorType: 'OWNER',
-        actor: userId,
-        // COD: hoàn thành = đã thu tiền (BR-39)
-        set: to === 'COMPLETED' ? { paymentStatus: 'PAID' } : {}
+    let order;
+    let posted;
+
+    // Hoàn thành: đổi trạng thái + ghi sổ ví (hoa hồng) trong cùng transaction — không bao giờ lệch nhau
+    await mongoose.connection.transaction(async (session) => {
+        // `from` = trạng thái vừa đọc: nếu có người đổi trước (vd khách vừa hủy) thì 409
+        order = await transitionOrder({
+            orderId,
+            filter: { restaurant: restaurant._id },
+            from: current.status,
+            to,
+            actorType: 'OWNER',
+            actor: userId,
+            // COD: hoàn thành = đã thu tiền (BR-39)
+            set: to === 'COMPLETED' ? { paymentStatus: 'PAID' } : {},
+            session
+        });
+
+        posted = to === 'COMPLETED' ? await wallet.settleOrder(order, session) : null;
     });
 
+    await wallet.afterPosting(posted);
     emitOrderStatusChanged(order);
     await notifications.orderStatusChanged(order);
     return order;
@@ -338,6 +386,34 @@ const cancelExpiredOrders = async ({ olderThanMinutes = 5, now = new Date() } = 
     return cancelled;
 };
 
+// Đơn trả trước quá hạn thanh toán -> CANCELLED (PAYMENT_TIMEOUT), hoàn suất. Trả về số đơn đã hủy.
+const expireUnpaidOrders = async ({ now = new Date() } = {}) => {
+    const expired = await Order.find({ status: 'PENDING_PAYMENT', paymentDeadline: { $lt: now } }).select('_id');
+
+    let cancelled = 0;
+    for (const { _id } of expired) {
+        try {
+            await transitionAndRelease({
+                orderId: _id,
+                filter: {},
+                from: 'PENDING_PAYMENT',
+                to: 'CANCELLED',
+                actorType: 'SYSTEM',
+                reason: 'PAYMENT_TIMEOUT',
+                set: { cancelReason: { code: 'PAYMENT_TIMEOUT', note: 'Quá hạn chưa nhận được thanh toán' } }
+            });
+            cancelled += 1;
+        } catch (error) {
+            // Tiền vừa về / khách vừa hủy cùng lúc -> bỏ qua
+            if (error.code !== 'INVALID_STATUS_TRANSITION') {
+                throw error;
+            }
+        }
+    }
+
+    return cancelled;
+};
+
 // 00:00 giờ VN: reset số suất đã bán trong ngày (BR-23)
 const resetDailyStock = async () => {
     const { modifiedCount } = await MenuItem.updateMany({ soldToday: { $gt: 0 } }, { $set: { soldToday: 0 } });
@@ -354,6 +430,7 @@ module.exports = {
     cancelByOwner,
     advanceByOwner,
     cancelExpiredOrders,
+    expireUnpaidOrders,
     resetDailyStock,
     releaseStock
 };

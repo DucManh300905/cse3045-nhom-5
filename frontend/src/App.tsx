@@ -7,6 +7,7 @@ import CheckoutPage from './pages/CheckoutPage';
 import LandingPage from './pages/LandingPage';
 import MenuPage from './pages/MenuPage';
 import OrdersPage from './pages/OrdersPage';
+import PaymentPage from './pages/PaymentPage';
 import RestaurantPage from './pages/RestaurantPage';
 import StaffAccountPage from './pages/StaffAccountPage';
 import AdminAuditLogsPage from './pages/admin/AdminAuditLogsPage';
@@ -17,12 +18,14 @@ import AdminLayout from './pages/admin/AdminLayout';
 import AdminRestaurantDetailPage from './pages/admin/AdminRestaurantDetailPage';
 import AdminRestaurantsPage from './pages/admin/AdminRestaurantsPage';
 import AdminReviewsPage from './pages/admin/AdminReviewsPage';
+import AdminWalletsPage from './pages/admin/AdminWalletsPage';
 import OwnerDashboardPage from './pages/owner/OwnerDashboardPage';
 import OwnerLayout from './pages/owner/OwnerLayout';
 import OwnerMenuPage from './pages/owner/OwnerMenuPage';
 import OwnerOrdersPage from './pages/owner/OwnerOrdersPage';
 import OwnerProfilePage from './pages/owner/OwnerProfilePage';
 import OwnerReviewsPage from './pages/owner/OwnerReviewsPage';
+import OwnerWalletPage from './pages/owner/OwnerWalletPage';
 
 export default function App() {
   return (
@@ -36,6 +39,7 @@ export default function App() {
       <Route element={<RequireCustomer />}>
         <Route path="/checkout" element={<CheckoutPage />} />
         <Route path="/orders" element={<OrdersPage />} />
+        <Route path="/orders/:id/pay" element={<PaymentPage />} />
         <Route path="/account" element={<AccountPage />} />
       </Route>
 
@@ -48,6 +52,7 @@ export default function App() {
           <Route path="orders" element={<OwnerOrdersPage />} />
           <Route path="reviews" element={<OwnerReviewsPage />} />
           <Route path="dashboard" element={<OwnerDashboardPage />} />
+          <Route path="wallet" element={<OwnerWalletPage />} />
           <Route path="account" element={<StaffAccountPage />} />
         </Route>
       </Route>
@@ -62,6 +67,7 @@ export default function App() {
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="orders" element={<AdminOrdersPage />} />
           <Route path="reviews" element={<AdminReviewsPage />} />
+          <Route path="wallets" element={<AdminWalletsPage />} />
           <Route path="account" element={<StaffAccountPage />} />
           <Route path="audit-logs" element={<AdminAuditLogsPage />} />
         </Route>

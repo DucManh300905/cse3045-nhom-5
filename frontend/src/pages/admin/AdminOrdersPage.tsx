@@ -6,6 +6,7 @@ import type { AdminOrder, OrderStatus, Paginated } from '../../types';
 import { formatDateTime, formatPrice } from '../../utils/format';
 
 const STATUS_TEXT: Record<OrderStatus, string> = {
+  PENDING_PAYMENT: 'Chờ thanh toán',
   PLACED: 'Chờ nhận',
   ACCEPTED: 'Đã nhận',
   PREPARING: 'Đang làm',
@@ -84,7 +85,7 @@ export default function AdminOrdersPage() {
                   <Fragment key={o.id}>
                     <tr className="clickable" onClick={() => setOpen(open === o.id ? null : o.id)}>
                       <td className="nowrap"><b>{o.code}</b></td>
-                      <td className="nowrap">{formatDateTime(o.placedAt)}</td>
+                      <td className="nowrap">{formatDateTime(o.placedAt ?? o.createdAt)}</td>
                       <td><Link to={`/admin/restaurants/${o.restaurant}`} className="link-btn" onClick={e => e.stopPropagation()}>{o.restaurantSnapshot.name}</Link></td>
                       <td>{o.customer?.fullName ?? '—'}<br /><small className="muted">{o.customer?.phone ?? o.customer?.email}</small></td>
                       <td className="nowrap">{formatPrice(o.total)}</td>

@@ -1,10 +1,13 @@
 const mongoose = require('mongoose');
 
 // Vòng đời đơn (BR-35) — chuyển trạng thái xem docs/project.md
-const ORDER_STATUSES = ['PLACED', 'ACCEPTED', 'REJECTED', 'PREPARING', 'READY', 'DELIVERING', 'COMPLETED', 'CANCELLED'];
+// PENDING_PAYMENT: đơn chuyển khoản trả trước đang chờ tiền về (W2) — quán chưa thấy đơn
+const ORDER_STATUSES = ['PENDING_PAYMENT', 'PLACED', 'ACCEPTED', 'REJECTED', 'PREPARING', 'READY', 'DELIVERING', 'COMPLETED', 'CANCELLED'];
 const FULFILLMENT_TYPES = ['DELIVERY', 'PICKUP'];
-const PAYMENT_METHODS = ['COD'];
-const CANCEL_REASONS = ['OUT_OF_STOCK', 'OVERLOADED', 'CLOSED', 'CUSTOMER_CHANGED_MIND', 'TIMEOUT', 'OTHER'];
+// BANK_TRANSFER: khách chuyển khoản VietQR trước, webhook SePay tự xác nhận
+const PAYMENT_METHODS = ['COD', 'BANK_TRANSFER'];
+const PAYMENT_STATUSES = ['UNPAID', 'PAID', 'REFUND_PENDING', 'REFUNDED'];
+const CANCEL_REASONS = ['OUT_OF_STOCK', 'OVERLOADED', 'CLOSED', 'CUSTOMER_CHANGED_MIND', 'TIMEOUT', 'PAYMENT_TIMEOUT', 'OTHER'];
 
 const money = {
     type: Number,
@@ -154,9 +157,21 @@ const orderSchema = new mongoose.Schema(
 
         paymentStatus: {
             type: String,
-            enum: ['UNPAID', 'PAID', 'REFUNDED'],
+            enum: PAYMENT_STATUSES,
             default: 'UNPAID'
         },
+
+        // ---- Trả trước (BANK_TRANSFER) ----
+        // Nội dung chuyển khoản = mã đơn bỏ dấu gạch (MAK2610110001): ngân hàng hay bỏ ký tự đặc biệt
+        paymentCode: {
+            type: String,
+            unique: true,
+            sparse: true
+        },
+        // Quá hạn chưa nhận đủ tiền -> job hủy đơn, hoàn suất
+        paymentDeadline: Date,
+        paidAt: Date,
+        paidAmount: Number,
 
         status: {
             type: String,
@@ -178,6 +193,8 @@ const orderSchema = new mongoose.Schema(
         },
 
         estimatedReadyAt: Date,
+        // Lúc đơn tới quán: COD = lúc đặt; trả trước = lúc nhận đủ tiền (null khi đang chờ thanh toán
+        // -> quán không thấy, báo cáo không tính, hạn 5 phút quán nhận đơn đếm từ đây)
         placedAt: {
             type: Date,
             default: Date.now
@@ -200,6 +217,7 @@ orderSchema.index({ customer: 1, createdAt: -1 });
 orderSchema.index({ restaurant: 1, status: 1, createdAt: -1 });
 orderSchema.index({ status: 1, placedAt: 1 });
 orderSchema.index({ restaurant: 1, completedAt: -1 });
+orderSchema.index({ status: 1, paymentDeadline: 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 
@@ -207,4 +225,5 @@ module.exports = Order;
 module.exports.ORDER_STATUSES = ORDER_STATUSES;
 module.exports.FULFILLMENT_TYPES = FULFILLMENT_TYPES;
 module.exports.PAYMENT_METHODS = PAYMENT_METHODS;
+module.exports.PAYMENT_STATUSES = PAYMENT_STATUSES;
 module.exports.CANCEL_REASONS = CANCEL_REASONS;

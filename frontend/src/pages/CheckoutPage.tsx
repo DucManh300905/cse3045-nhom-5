@@ -10,7 +10,7 @@ import CartLines from '../components/CartLines';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useToast } from '../context/ToastContext';
-import type { Address, FulfillmentType, OrderPreview, Restaurant } from '../types';
+import type { Address, FulfillmentType, OrderPreview, PaymentMethod, PaymentMethods, Restaurant } from '../types';
 import { formatPrice, PHONE_REGEX } from '../utils/format';
 
 const STEPS = ['Chọn món', 'Thông tin giao hàng', 'Hoàn tất'];
@@ -30,6 +30,8 @@ export default function CheckoutPage() {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [addressId, setAddressId] = useState(NEW_ADDRESS);
   const [fulfillment, setFulfillment] = useState<FulfillmentType>('DELIVERY');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('COD');
+  const [methods, setMethods] = useState<PaymentMethods | null>(null);
   const [form, setForm] = useState({
     receiverName: user?.fullName ?? '',
     phone: user?.phone ?? '',
@@ -57,6 +59,11 @@ export default function CheckoutPage() {
       })
       .catch(err => setError(getErrorMessage(err)));
   }, [shopId, refresh, menuVersion]);
+
+  // Chuyển khoản chỉ hiện khi MAK đã bật (có tài khoản nhận + webhook SePay)
+  useEffect(() => {
+    ordersApi.methods().then(setMethods).catch(() => setMethods(null));
+  }, []);
 
   // Sổ địa chỉ: chọn sẵn địa chỉ mặc định
   useEffect(() => {
@@ -99,7 +106,7 @@ export default function CheckoutPage() {
     if (!lines.length) return setError('Giỏ hàng đang trống.');
     if (closed) return setError('Quán hiện không nhận đơn.');
 
-    const input: PlaceOrderInput = { restaurantId: cartShop.id, items, fulfillmentType: fulfillment, paymentMethod: 'COD' };
+    const input: PlaceOrderInput = { restaurantId: cartShop.id, items, fulfillmentType: fulfillment, paymentMethod };
     const saved = addresses.find(a => a.id === addressId);
     let newAddress: { receiverName: string; phone: string; addressLine: string } | null = null;
 
@@ -129,9 +136,15 @@ export default function CheckoutPage() {
         usersApi.createAddress(newAddress).catch(err => notify(`Chưa lưu được địa chỉ: ${getErrorMessage(err)}`));
       }
 
-      navigate('/orders', { state: { placedCode: order.code, placedId: order.id } });
       clear();
-      notify(`Đặt món thành công! Mã đơn ${order.code}`);
+      if (order.status === 'PENDING_PAYMENT') {
+        // Trả trước: sang trang quét mã, đơn tới quán khi tiền về
+        navigate(`/orders/${order.id}/pay`);
+        notify(`Đã tạo đơn ${order.code} — vui lòng chuyển khoản`);
+      } else {
+        navigate('/orders', { state: { placedCode: order.code, placedId: order.id } });
+        notify(`Đặt món thành công! Mã đơn ${order.code}`);
+      }
     } catch (err) {
       // Server đã trả lời (từ chối) -> lần sau là yêu cầu mới; mạng lỗi -> giữ key để gửi lại an toàn
       if (axios.isAxiosError(err) && err.response) idempotencyKey.current = null;
@@ -241,11 +254,21 @@ export default function CheckoutPage() {
                 </>
               )}
 
-              <div className="pay-method">
-                <div>
-                  <b>Tiền mặt khi nhận hàng</b>
-                  <small>{fulfillment === 'PICKUP' ? 'Thanh toán tại quán khi lấy món' : 'Thanh toán trực tiếp cho người giao'}</small>
-                </div>
+              <div className="pay-methods" role="radiogroup" aria-label="Hình thức thanh toán">
+                <button type="button" role="radio" aria-checked={paymentMethod === 'COD'} className={`pay-method ${paymentMethod === 'COD' ? 'active' : ''}`} onClick={() => setPaymentMethod('COD')}>
+                  <div>
+                    <b>Tiền mặt khi nhận hàng</b>
+                    <small>{fulfillment === 'PICKUP' ? 'Thanh toán tại quán khi lấy món' : 'Thanh toán trực tiếp cho người giao'}</small>
+                  </div>
+                </button>
+                {methods?.BANK_TRANSFER && (
+                  <button type="button" role="radio" aria-checked={paymentMethod === 'BANK_TRANSFER'} className={`pay-method ${paymentMethod === 'BANK_TRANSFER' ? 'active' : ''}`} onClick={() => setPaymentMethod('BANK_TRANSFER')}>
+                    <div>
+                      <b>Chuyển khoản VietQR (trả trước)</b>
+                      <small>Quét mã trong {methods.paymentTimeoutMinutes} phút, tự xác nhận khi tiền về. Đơn bị hủy sẽ được hoàn tiền</small>
+                    </div>
+                  </button>
+                )}
               </div>
             </section>
 

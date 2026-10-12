@@ -18,6 +18,7 @@ const TABS: { key: string; label: string; statuses: OrderStatus[] }[] = [
 ];
 
 const STATUS_TEXT: Record<OrderStatus, string> = {
+  PENDING_PAYMENT: 'Chờ khách thanh toán',
   PLACED: 'Chờ nhận',
   ACCEPTED: 'Đã nhận',
   PREPARING: 'Đang làm',
@@ -166,7 +167,7 @@ export default function OwnerOrdersPage() {
       ) : (
         <ul className="kitchen-list">
           {orders.map(o => {
-            const leftMs = new Date(o.placedAt).getTime() + TIMEOUT_MINUTES * 60_000 - now;
+            const leftMs = new Date(o.placedAt ?? o.createdAt).getTime() + TIMEOUT_MINUTES * 60_000 - now;
             const busy = busyId === o.id;
             return (
               <li key={o.id} className={`panel kitchen-card s-${o.status}`}>
@@ -179,7 +180,7 @@ export default function OwnerOrdersPage() {
                     <span className="tag muted-tag">{o.fulfillmentType === 'PICKUP' ? 'Tự đến lấy' : 'Giao tận nơi'}</span>
                   </div>
                   <small>
-                    Đặt lúc {time(o.placedAt)}
+                    Đặt lúc {time(o.placedAt ?? o.createdAt)}
                     {o.status === 'PLACED' && (
                       <b className={leftMs < 60_000 ? 'countdown urgent' : 'countdown'}>
                         {leftMs > 0
@@ -225,6 +226,7 @@ export default function OwnerOrdersPage() {
                   <div className="kitchen-total">
                     <small>{o.paymentStatus === 'PAID' ? 'Đã thu tiền mặt' : 'Thu tiền mặt'}</small>
                     <strong>{formatPrice(o.total)}</strong>
+                    {o.paymentMethod === 'BANK_TRANSFER' && <span className="tag" title="Khách đã chuyển khoản trước — không thu tiền mặt">Đã thanh toán</span>}
                   </div>
                 </div>
 

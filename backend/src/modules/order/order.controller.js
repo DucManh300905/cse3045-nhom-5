@@ -1,6 +1,7 @@
 const Order = require('./order.model');
 const User = require('../user/user.model');
 const { placeOrder, previewOrder, cancelByCustomer } = require('./order.service');
+const { orderPaymentInfo } = require('../payment/payment.service');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
 const { getPagination, paginate } = require('../../utils/pagination');
@@ -131,7 +132,18 @@ const getMyOrder = asyncHandler(async (req, res) => {
     });
 });
 
-// POST /orders/:id/cancel { note? } — chỉ khi PLACED (BR-35)
+// GET /orders/:id/payment — mã VietQR, số tiền, nội dung, hạn thanh toán (đơn trả trước)
+const getMyOrderPayment = asyncHandler(async (req, res) => {
+    const order = await Order.findOne({ _id: req.params.id, customer: req.user.userId });
+
+    if (!order || order.paymentMethod !== 'BANK_TRANSFER') {
+        throw new AppError(404, 'NOT_FOUND', 'Order not found');
+    }
+
+    return res.status(200).json({ success: true, data: orderPaymentInfo(order) });
+});
+
+// POST /orders/:id/cancel { note? } — khi PENDING_PAYMENT hoặc PLACED (BR-35)
 const cancelMyOrder = asyncHandler(async (req, res) => {
     const order = await cancelByCustomer({
         orderId: req.params.id,
@@ -151,5 +163,6 @@ module.exports = {
     createOrder,
     listMyOrders,
     getMyOrder,
+    getMyOrderPayment,
     cancelMyOrder
 };

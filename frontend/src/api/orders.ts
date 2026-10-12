@@ -1,5 +1,5 @@
 import client, { type ApiResponse } from './client';
-import type { FulfillmentType, Order, OrderPreview, OrderStatus, Paginated } from '../types';
+import type { FulfillmentType, Order, OrderPaymentInfo, OrderPreview, OrderStatus, Paginated, PaymentMethod, PaymentMethods } from '../types';
 
 // Đơn của khách (docs/API.md mục 2.6). Giá không gửi lên — server tự tính (BR-31).
 
@@ -18,7 +18,8 @@ export interface PlaceOrderInput {
   /** Địa chỉ trong sổ — hoặc gửi delivery */
   addressId?: string;
   delivery?: { receiverName?: string; phone?: string; addressLine?: string; note?: string };
-  paymentMethod?: 'COD';
+  /** BANK_TRANSFER: trả trước qua VietQR, đơn chờ tiền về rồi mới tới quán */
+  paymentMethod?: PaymentMethod;
 }
 
 /** Khóa chống đặt trùng (BR-38); trình duyệt cũ không có randomUUID thì tự sinh */
@@ -52,7 +53,19 @@ export const ordersApi = {
     return res.data.data;
   },
 
-  /** Chỉ khi đơn còn PLACED (quán chưa nhận) */
+  /** Phương thức đang bật (chuyển khoản chỉ bật khi MAK đã cấu hình SePay) */
+  async methods() {
+    const res = await client.get<ApiResponse<PaymentMethods>>('/payments/methods');
+    return res.data.data;
+  },
+
+  /** Mã VietQR + hạn thanh toán của đơn trả trước */
+  async payment(id: string) {
+    const res = await client.get<ApiResponse<OrderPaymentInfo>>(`/orders/${id}/payment`);
+    return res.data.data;
+  },
+
+  /** Khi đơn đang chờ thanh toán hoặc còn PLACED (quán chưa nhận); đã trả tiền -> MAK hoàn */
   async cancel(id: string, note?: string) {
     const res = await client.post<ApiResponse<Order>>(`/orders/${id}/cancel`, note ? { note } : {});
     return res.data.data;

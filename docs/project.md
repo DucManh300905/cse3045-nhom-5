@@ -76,9 +76,11 @@ backend/
 │   │   ├── promotion/     ⬜ voucher của quán
 │   │   ├── review/        ⬜ đánh giá + trả lời
 │   │   ├── notification/  ✅ lưu thông báo + đẩy Socket.IO, chuông trên FE
-│   │   └── report/        ✅ dashboard quán, thống kê admin (report.service.js)
+│   │   ├── report/        ✅ dashboard quán, thống kê admin (report.service.js)
+│   │   ├── wallet/        ✅ ví đối soát: sổ cái kép, nạp / rút, khóa nhận đơn theo số dư (wallet.service.js)
+│   │   └── payment/       ✅ trả trước VietQR: webhook SePay, hoàn tiền, giao dịch không khớp (payment.service.js)
 │   ├── realtime/          ✅ socket.js (xác thực JWT, phòng user/restaurant/admin, emit sự kiện)
-│   ├── jobs/              ✅ index.js: orderTimeout (mỗi phút), dailyStockReset (00:00 VN)
+│   ├── jobs/              ✅ index.js: orderTimeout + paymentTimeout (mỗi phút), walletLock (hằng giờ), dailyStockReset (00:00 VN)
 │   └── utils/             AppError, asyncHandler, validators, validationRules, pagination,
 │                          text (bỏ dấu, slug), openingHours (giờ VN), seeAdmin, seedDemo,
 │                          migrations/001-restaurant-status.js — ✅ · orderStateMachine ⬜
@@ -215,9 +217,9 @@ Phân quyền **theo từng cửa hàng** (RBAC), lưu ở collection `storeStaf
 | # | Chức năng | Phạm vi | Trạng thái |
 |---|---|---|---|
 | F1 | Doanh thu theo ngày/tuần/tháng (tiền hàng, giảm giá) | MVP | ⬜ |
-| F2 | Hoa hồng nền tảng: `commissionRate` trên quán (admin sửa) ✅; tính `commissionAmount` trên đơn ⬜ | MVP | 🟡 |
-| F3 | Ví, ledger, rút tiền, chu kỳ thanh toán, đối soát COD/online | ⏭️ | ⬜ |
-| F4 | Thanh toán online VNPay + callback, hoàn tiền | ⏭️ | ⬜ |
+| F2 | Hoa hồng nền tảng: `commissionRate` trên quán (admin sửa), snapshot `commissionAmount` vào đơn, trừ vào ví quán khi đơn hoàn thành | MVP | ✅ |
+| F3 | Ví đối soát (sổ cái kép), nạp tiền trả nợ hoa hồng COD (VietQR, admin xác nhận), rút tiền, tự khóa / mở nhận đơn theo số dư | Thêm 11/10 | ✅ |
+| F4 | Khách trả trước VietQR + webhook SePay tự xác nhận, hoàn tiền khi đơn đã trả bị hủy / chuyển sai (W2 — thay VNPay) | Thêm 11/10 | ✅ |
 | F5 | Hóa đơn VAT, sao kê Excel/PDF | ⏭️ | ⬜ |
 
 ### G. Đánh giá & CSKH
@@ -345,9 +347,14 @@ Mọi chuyển khác → lỗi `409 INVALID_STATUS_TRANSITION`. Mỗi lần chuy
 | Mã | Quy tắc | |
 |---|---|---|
 | BR-50 | Mọi số tiền là **số nguyên VND** (validate ở cả route và model). | ✅ (quán, menu) |
-| BR-51 | `commissionAmount = round(subtotal × commissionRate)`; `commissionRate` mặc định 10%, lưu trên quán, **chỉ admin sửa**, snapshot vào đơn. | 🟡 (lưu/sửa ✅, tính trên đơn ⬜) |
+| BR-51 | `commissionAmount = round(subtotal × commissionRate)`; `commissionRate` mặc định 10%, lưu trên quán, **chỉ admin sửa**, snapshot vào đơn. | ✅ |
 | BR-52 | Doanh thu quán chỉ tính đơn `COMPLETED` (theo ngày đặt, giờ VN). | ✅ |
-| BR-53 | (⏭️) Ví dùng ledger chỉ-ghi-thêm: không sửa số dư trực tiếp. | ⏭️ |
+| BR-53 | Ví dùng sổ cái kép chỉ-ghi-thêm: mỗi bút toán tổng = 0, không sửa số dư trực tiếp; điều chỉnh tay chỉ admin, bắt buộc lý do + audit log. | ✅ |
+| BR-54 | Đơn COD hoàn thành: ví quán `−hoa hồng + voucher`. Hoa hồng tính trên tạm tính (trước voucher); **voucher do nền tảng (admin) chịu**. | ✅ |
+| BR-55 | Ví quán được âm tối đa 100.000đ trong 3 ngày. Vượt hạn mức → tạm ngưng nhận đơn ngay; âm quá 3 ngày → tạm ngưng; nạp đủ (số dư ≥ 0) → tự mở lại. | ✅ |
+| BR-57 | Đơn trả trước chỉ tới quán khi webhook ngân hàng xác nhận đủ tiền (không tin client). Quá `PAYMENT_TIMEOUT_MINUTES` (15') chưa đủ tiền → tự hủy, hoàn suất. Mỗi giao dịch ngân hàng chỉ xử lý một lần. | ✅ |
+| BR-58 | Tiền khách đã trả mà đơn bị hủy / từ chối, hoặc chuyển thừa / thiếu / muộn / trùng → lệnh hoàn tiền; admin chuyển trả rồi xác nhận (kèm mã giao dịch). | ✅ |
+| BR-56 | Rút tiền: quán gửi yêu cầu (tối thiểu 50.000đ, ≤ số dư, mỗi lúc một yêu cầu); tiền bị giữ ngay, admin chuyển khoản rồi xác nhận hoặc từ chối (trả lại ví). | ✅ |
 
 ### Đánh giá
 
@@ -448,7 +455,7 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 |---|---|---|
 | 1 | Owner đăng ký → tạo quán (DRAFT) → nộp hồ sơ → Admin duyệt → quán hiện ở trang khách. | ✅ BE (có test end-to-end) · ✅ FE |
 | 2 | Owner tạo danh mục, món có size + topping bắt buộc, đặt giới hạn 5 suất/ngày. | ✅ BE · ✅ FE |
-| 3 | Khách chọn món, chọn size/topping, áp voucher, đặt đơn COD. | 🟡 (đặt đơn COD ✅, voucher ⬜) |
+| 3 | Khách chọn món, chọn size/topping, áp voucher, đặt đơn COD. | 🟡 (đặt đơn COD ✅ + trả trước VietQR ✅, voucher ⬜) |
 | 4 | Trang quán **kêu chuông** và hiện đơn mới không cần F5; quán nhận → chuẩn bị → sẵn sàng → đang giao → hoàn thành; khách thấy trạng thái đổi realtime. | ✅ |
 | 5 | Đơn không được phản hồi 5 phút → tự hủy, tồn kho được hoàn. | ✅ |
 | 6 | Khách đánh giá, quán trả lời; dashboard quán hiện doanh thu đúng. | ✅ |
@@ -479,8 +486,11 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 | Ai giao hàng — tài xế nền tảng hay quán tự giao? | Quán tự giao (bỏ trạng thái PICKED_UP) | ✅ **Quán tự giao** (06/10/2026) |
 | Xác thực khi đăng ký? | OTP email / SĐT | ✅ **Chỉ email, mã 6 số qua Gmail** (08/10/2026); SĐT để sau |
 | Phí giao hàng? | Quán tự cấu hình | ✅ **Miễn phí hoàn toàn cho khách** (06/10/2026) — bỏ `deliveryFee` khỏi hồ sơ quán; `orders.deliveryFee` luôn = 0 |
-| Mô hình hoa hồng? | Cố định 10%, lưu `commissionRate` trên từng quán (admin sửa được — đã code) | |
-| Hình thức thanh toán, ai giữ tiền? | MVP chỉ COD, quán giữ tiền | |
+| Mô hình hoa hồng? | Cố định 10%, lưu `commissionRate` trên từng quán (admin sửa được — đã code) | ✅ Tính trên tạm tính, trừ vào ví đối soát khi đơn hoàn thành (11/10/2026) |
+| Hình thức thanh toán, ai giữ tiền? | MVP chỉ COD, quán giữ tiền | ✅ **Ví đối soát nội bộ**, không làm ví điện tử thật (cần giấy phép NHNN) (11/10/2026). COD: quán giữ tiền, ví trừ hoa hồng; trả trước VietQR: tiền vào TK MAK, **SePay** tự xác nhận, đơn hoàn thành mới chia cho quán (11/10/2026) |
+| Voucher ai chịu? | — | ✅ **Nền tảng (admin) chịu** (11/10/2026) |
+| Trả tiền cho quán thế nào? | — | ✅ **Quán gửi yêu cầu rút**, admin chuyển khoản (11/10/2026) |
+| Quán nợ hoa hồng thì sao? | — | ✅ Âm tối đa 100.000đ / 3 ngày, quá thì tạm ngưng nhận đơn, nạp đủ tự mở (11/10/2026) |
 | Quy mô ban đầu? | ~10 quán, < 500 đơn/ngày → 1 server + Atlas free | |
 | App cho quán: app riêng hay web? | Web portal `/owner` trong cùng frontend | |
 | Cho phép 1 owner nhiều quán ở MVP? | Không (BR-10 — đã code) | |
@@ -515,6 +525,8 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 | 12 — OTP email | 08/10/2026 | Đăng ký bằng email phải xác thực mã OTP 6 số gửi qua Gmail (`nodemailer`; chế độ `log` khi chưa cấu hình); `/api/auth/otp/send`, `/api/auth/otp/verify` → vé 15 phút; mã băm HMAC, 5 phút, 5 lần sai, gửi lại sau 60 s, ≤ 5 mã / giờ; `users.emailVerified`; SĐT chưa áp dụng OTP; FE: bước nhập mã trong form đăng ký | 214 |
 | 13 — Quên mật khẩu | 09/10/2026 | `/api/auth/password/forgot` + `/password/reset`: mã 6 số qua Gmail (mục đích `RESET_PASSWORD`, tách khỏi mã đăng ký), không lộ email nào đã đăng ký, đặt lại → đăng xuất mọi phiên + email báo đã đổi; FE: link "Quên mật khẩu?" ở trang đăng nhập của khách / chủ quán / admin | 221 |
 | 14 — API-9 (báo cáo + admin) | 09/10/2026 | `/api/merchant/reports/{summary,revenue,top-items}`, `/api/admin/reports/summary`, `/api/admin/users` (+ khóa / mở, khóa chủ quán → tắt nhận đơn), `/api/admin/orders`; khoảng ngày giờ VN, doanh thu chỉ đơn hoàn thành; FE: `/owner/dashboard`, `/admin/stats` (biểu đồ cột doanh thu + bảng), `/admin/users`, `/admin/orders`, trang Tài khoản (đổi mật khẩu) cho chủ quán / admin | 230 |
+| 15 — API-11 (ví đối soát) | 11/10/2026 | Module `wallet/`: sổ cái kép (`wallets`, `walletentries` chỉ ghi thêm), đơn COD hoàn thành trừ hoa hồng trong cùng transaction, voucher MAK chịu; nạp tiền (mã `NAP…`, ảnh VietQR, admin xác nhận), rút tiền (giữ tiền ngay, admin chuyển / từ chối), điều chỉnh tay có audit; tự khóa nhận đơn khi ví âm > 100k hoặc > 3 ngày (job `walletLock`), tự mở khi hết âm; FE `/owner/wallet`, `/admin/wallets`, banner tạm ngưng | 247 |
+| 16 — W2 (trả trước VietQR + SePay) | 11/10/2026 | Đơn `BANK_TRANSFER` → `PENDING_PAYMENT` (quán chưa thấy, giữ suất 15'), webhook `/api/payments/sepay/webhook` (API key, chống xử lý trùng) tự xác nhận → đơn tới quán; chuyển thừa / thiếu / muộn / trùng → lệnh hoàn; đơn đã trả bị hủy → hoàn tiền; mã `NAP…` tự xác nhận nạp ví quán; ví `ESCROW`, `REFUND_HOLD`; job `paymentTimeout`; `npm run sepay:simulate`; FE: chọn chuyển khoản ở checkout, trang quét mã `/orders/:id/pay` (đếm ngược, tự cập nhật), tab Hoàn tiền + Giao dịch ngân hàng ở `/admin/wallets` | 265 |
 
 **Lệnh hay dùng (trong `backend/`):**
 

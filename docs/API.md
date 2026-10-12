@@ -335,10 +335,113 @@ Người thực hiện thao tác không tự nhận thông báo của chính mì
 | Module | Endpoint dự kiến |
 |---|---|
 | Nhân viên | `GET/POST/DELETE /merchant/staff`, `PATCH /merchant/staff/:id/role` |
-| Ví & rút tiền | `GET /merchant/wallet`, `GET /merchant/wallet/transactions`, `POST /merchant/payouts` (Idempotency-Key) |
-| Đối soát | `GET /merchant/settlements`, `GET /admin/settlements`, `POST /admin/payouts/:id/mark-paid` |
+| Ví & rút tiền | ✅ đã làm ở API-11 — xem mục 2.10 |
+| Thanh toán trả trước | ✅ đã làm (W2) — xem mục 2.11 |
 | Thanh toán | `POST /payments/vnpay/create`, `GET /payments/vnpay/return`, `POST /payments/vnpay/ipn` |
 | Khiếu nại | `POST /orders/:id/disputes`, `GET /admin/disputes` |
+
+---
+
+### 2.10 Ví đối soát — `/merchant/wallet`, `/admin/wallets|topups|payouts` ✅ (API-11, 11/10/2026)
+
+Không phải ví điện tử giữ tiền thật (cần giấy phép NHNN). Đây là **sổ cái kép** ghi ai nợ ai:
+tiền thật vẫn đi qua tài khoản ngân hàng của MAK (quán nạp bằng chuyển khoản VietQR, admin chuyển trả quán rút).
+
+| Ví | Số dư nghĩa là |
+|---|---|
+| `RESTAURANT` (mỗi quán) | `> 0` MAK nợ quán (rút được) · `< 0` quán nợ MAK (hoa hồng đơn tiền mặt) |
+| `PLATFORM` | Doanh thu nền tảng = hoa hồng − voucher MAK chịu |
+| `PAYOUT_HOLD` | Tiền quán đã yêu cầu rút, chờ admin chuyển |
+| `EXTERNAL` | Đối ứng tiền thật ra / vào TK MAK (nạp −, chuyển cho quán +) → tiền MAK đang giữ = `−balance` |
+
+**Bút toán** (tổng mỗi bút toán = 0, chạy trong cùng transaction với thao tác gốc, `ref` chống ghi trùng):
+
+| Sự kiện | Ví quán | Đối ứng |
+|---|---|---|
+| Đơn COD `COMPLETED` (subtotal S, hoa hồng C = round(S × rate), voucher V) | `V − C` | PLATFORM `C − V` |
+| Admin xác nhận nạp X | `+X` | EXTERNAL `−X` |
+| Quán yêu cầu rút X | `−X` | PAYOUT_HOLD `+X` |
+| Admin đã chuyển | — | PAYOUT_HOLD `−X`, EXTERNAL `+X` |
+| Admin từ chối rút | `+X` | PAYOUT_HOLD `−X` |
+| Admin điều chỉnh ±X (bắt buộc lý do, audit `WALLET_ADJUST`) | `±X` | PLATFORM `∓X` |
+
+**Khóa nhận đơn (quyết định 11/10/2026):** ví quán được âm tối đa `WALLET_CREDIT_LIMIT` (100.000đ) trong `WALLET_GRACE_DAYS` (3 ngày).
+Âm vượt hạn mức → khóa ngay (`walletLockReason = OVER_LIMIT`); âm liên tục quá 3 ngày → job hằng giờ khóa (`OVERDUE`).
+Khóa = `restaurants.walletLockedAt` ≠ null → `canAcceptOrders = false` (khách thấy quán không nhận đơn, đặt → 422 `RESTAURANT_CLOSED`;
+chủ bật nhận đơn → 409 `WALLET_LOCKED`). Chủ quán vẫn đăng nhập, xử lý đơn cũ và nạp tiền được.
+Số dư về `>= 0` (nạp đủ) → **tự mở**, không cần bật lại. Không đụng `status` (BLOCKED là admin khóa tay).
+
+| Method | Endpoint | Mô tả | |
+|---|---|---|---|
+| GET | `/merchant/wallet` | `balance`, `available`, `negativeSince`, `lockDeadline`, `locked`, `lockReason`, `creditLimit`, `graceDays`, `payoutMin`, `topupMin`, `bankAccount`, `pendingTopup` (kèm QR), `pendingPayout`, `platformBank` | ✅ |
+| GET | `/merchant/wallet/entries` | Lịch sử ví quán (mới nhất trước, phân trang) | ✅ |
+| PUT | `/merchant/wallet/bank-account` | `{ bankName, accountNumber (6–20 số), accountName }` — tên chủ TK tự viết hoa | ✅ |
+| POST | `/merchant/wallet/topups` | `{ amount >= TOPUP_MIN_AMOUNT }` → lệnh `PENDING`, `code` = nội dung CK `NAP{yyMMdd}{seq}`, `qrUrl` (img.vietqr.io; `null` nếu chưa cấu hình `PAYMENT_*`). Lệnh đang chờ cũ → `CANCELLED` | ✅ |
+| GET | `/merchant/wallet/topups` · POST `/topups/:id/cancel` | Lịch sử lệnh nạp · hủy lệnh đang chờ (409 nếu đã xử lý) | ✅ |
+| POST | `/merchant/wallet/payouts` | `{ amount >= PAYOUT_MIN_AMOUNT }`; cần tài khoản (422 `BANK_ACCOUNT_REQUIRED`), đủ số dư (422 `INSUFFICIENT_BALANCE`), một yêu cầu chờ mỗi lúc (409 `PAYOUT_PENDING`); quán BLOCKED → 403 | ✅ |
+| GET | `/merchant/wallet/payouts` | Lịch sử rút | ✅ |
+| GET | `/admin/wallets/overview` | `platformRevenue`, `cashHeld`, `payoutHold`, `owedToRestaurants`, `owedByRestaurants`, `negativeRestaurants`, `lockedRestaurants`, `pendingTopups`, `pendingPayouts`, `balanced` (tổng số dư = 0 và tổng dòng sổ = 0) | ✅ |
+| GET | `/admin/wallets` | `?status=negative\|positive\|locked&q=<tên quán>` — âm nhiều nhất trước, kèm quán + `lockDeadline` | ✅ |
+| GET | `/admin/wallets/:restaurantId/entries` | Sổ ví một quán | ✅ |
+| POST | `/admin/wallets/:restaurantId/adjustments` | `{ amount (±, ≠ 0), reason }` | ✅ |
+| GET | `/admin/topups` · `/admin/payouts` | `?status=&q=` | ✅ |
+| POST | `/admin/topups/:id/confirm` | `{ receivedAmount?, bankRef? }` — lệnh `PENDING` hoặc `CANCELLED` (quán lỡ chuyển); audit `TOPUP_CONFIRM`; có thể mở khóa quán | ✅ |
+| POST | `/admin/topups/:id/reject` | `{ reason }`; audit `TOPUP_REJECT` | ✅ |
+| POST | `/admin/payouts/:id/paid` · `/reject` | `{ bankRef? }` · `{ reason }` (tiền trả lại ví); audit `PAYOUT_PAID` / `PAYOUT_REJECT` | ✅ |
+
+Thông báo: `WALLET_NEGATIVE` (kèm hạn nạp), `WALLET_LOCKED`, `WALLET_UNLOCKED`, `TOPUP_CONFIRMED|REJECTED`, `PAYOUT_PAID|REJECTED` → chủ quán;
+`TOPUP_REQUESTED`, `PAYOUT_REQUESTED` → admin.
+
+**W2 ✅:** khách trả trước bằng VietQR + webhook SePay tự xác nhận (ví `ESCROW`, `REFUND_HOLD`) — mục 2.11;
+lệnh nạp của quán cũng tự xác nhận khi SePay báo tiền về với nội dung `NAP…`.
+
+---
+
+### 2.11 Thanh toán trả trước — VietQR + SePay tự xác nhận ✅ (W2, 11/10/2026)
+
+**Luồng:** khách chọn `paymentMethod: BANK_TRANSFER` → đơn `PENDING_PAYMENT` (giữ suất, `placedAt = null` nên quán chưa thấy, báo cáo không tính),
+`paymentCode` = mã đơn bỏ dấu gạch (`MAK2610110001`), `paymentDeadline` = +`PAYMENT_TIMEOUT_MINUTES` (15') →
+khách quét VietQR (số tiền + nội dung điền sẵn) → SePay gọi webhook → backend xác nhận → đơn `PLACED`, `paymentStatus = PAID`,
+`placedAt = paidAt` (hạn 5' quán nhận đơn đếm từ đây) → chuông + thông báo cho quán như đơn COD.
+Không có nút "tôi đã chuyển": chỉ webhook ngân hàng mới xác nhận tiền.
+
+Chuyển khoản chỉ bật khi backend có đủ `PAYMENT_BANK_ID`, `PAYMENT_ACCOUNT_NO` và `SEPAY_WEBHOOK_API_KEY`; thiếu → đặt đơn 422 `PAYMENT_METHOD_UNAVAILABLE`.
+
+| Method | Endpoint | Mô tả | |
+|---|---|---|---|
+| GET | `/payments/methods` | Công khai: `{ COD, BANK_TRANSFER, paymentTimeoutMinutes }` | ✅ |
+| POST | `/payments/sepay/webhook` | SePay gọi. Header `Authorization: Apikey <SEPAY_WEBHOOK_API_KEY>` (sai → 401). Body SePay: `id`, `gateway`, `transactionDate`, `accountNumber`, `code`, `content`, `transferType`, `transferAmount`, `referenceCode`. Trả 200 `{ success: true, status }`; lỗi hệ thống → 500 để SePay gửi lại | ✅ |
+| GET | `/orders/:id/payment` | Khách: `amount`, `paymentCode`, `paymentDeadline`, `qrUrl` (chỉ khi còn chờ), `bank`, `paymentStatus` | ✅ |
+| POST | `/orders/:id/cancel` | Nay hủy được cả khi `PENDING_PAYMENT`; đơn đã trả → tự tạo lệnh hoàn | ✅ |
+| GET | `/admin/refunds?status=PENDING\|DONE` | Lệnh hoàn tiền kèm khách (tên, SĐT, email), mã đơn, giao dịch gốc | ✅ |
+| POST | `/admin/refunds/:id/done` | `{ bankRef? }` — admin đã chuyển trả; đơn → `REFUNDED`; audit `REFUND_DONE` | ✅ |
+| GET | `/admin/payments?status=` | Mọi giao dịch SePay báo về | ✅ |
+| POST | `/admin/payments/:id/resolve` | `{ action: refund\|ignore, note }` cho giao dịch `UNMATCHED`; audit `PAYMENT_REFUND` / `PAYMENT_IGNORE` | ✅ |
+
+**Xử lý webhook** (mỗi `id` SePay chỉ xử lý một lần — `payments.providerTxId` unique):
+
+| Trường hợp | Kết quả `status` | Tiền |
+|---|---|---|
+| Nội dung có `MAK…`, đơn đang chờ, chuyển ≥ tổng | `MATCHED_ORDER` | EXTERNAL −X, ESCROW +tổng, phần thừa → REFUND_HOLD + lệnh hoàn `OVERPAID` |
+| Chuyển thiếu | `UNDERPAID` (đơn vẫn chờ) | hoàn toàn bộ khoản thiếu, báo khách chuyển lại đủ |
+| Đơn đã hết hạn / hủy | `LATE` | hoàn toàn bộ |
+| Đơn đã thanh toán rồi | `DUPLICATE` | hoàn toàn bộ |
+| Nội dung có `NAP…` (lệnh nạp ví quán đang chờ) | `MATCHED_TOPUP` | cộng ví quán số thực nhận (`wallet.confirmTopup`), có thể mở khóa quán |
+| Không nhận ra mã | `UNMATCHED` | chưa ghi sổ, báo admin → hoàn hoặc bỏ qua |
+| Tiền ra / tài khoản khác `PAYMENT_ACCOUNT_NO` | `IGNORED` | — |
+
+Mã được tìm trong `code`, `content`, `description` sau khi bỏ dấu cách / ký tự đặc biệt, không phân biệt hoa thường (`MAK\d{10}`, `NAP\d{10}`).
+
+**Đơn đã trả bị hủy** (khách hủy, quán từ chối / hủy, quá 5' quán không nhận): `paymentStatus = REFUND_PENDING`, ESCROW −tổng → REFUND_HOLD, lệnh hoàn `ORDER_CANCELLED`, báo admin.
+**Đơn hoàn thành:** ESCROW −tổng → ví quán (tổng + voucher − hoa hồng) + PLATFORM (hoa hồng − voucher).
+**Quá hạn thanh toán:** job `paymentTimeout` (mỗi phút) → `CANCELLED` (`PAYMENT_TIMEOUT`), hoàn suất, không báo quán.
+
+**Cấu hình SePay (làm một lần):**
+1. Đăng ký my.sepay.vn, liên kết tài khoản ngân hàng nhận tiền của MAK.
+2. Cấu hình chung → Cấu trúc mã thanh toán: thêm tiền tố `MAK` và `NAP`, phần sau 10 chữ số (nếu không cấu hình, backend vẫn tự tìm mã trong `content`).
+3. Webhooks → Thêm: sự kiện "Có tiền vào", URL `https://<domain>/api/payments/sepay/webhook`, kiểu chứng thực **API Key** = giá trị `SEPAY_WEBHOOK_API_KEY` trong `backend/.env`.
+   Cần domain cố định (Cloudflare Named Tunnel / domain riêng) — Quick Tunnel đổi URL mỗi lần khởi động.
+4. Thử trên máy không cần SePay: `npm run sepay:simulate -- <nội dung> <số tiền>` (gọi webhook cục bộ với API key trong `.env`).
 
 ---
 
@@ -397,6 +500,11 @@ Mất kết nối: FE tải lại danh sách đơn khi kết nối lại (`useSo
 | `MULTIPLE_RESTAURANTS` | 422 | BR-30 | ✅ |
 | `INVALID_OPTIONS` | 422 | BR-22 — sai biến thể, topping hết, chọn thiếu/thừa so với `minSelect`/`maxSelect` | ✅ |
 | `VOUCHER_INVALID` / `VOUCHER_EXHAUSTED` | 422 | BR-40..42 | ⬜ |
+| `WALLET_LOCKED` | 409 | Bật nhận đơn khi ví đang khóa (BR-55) | ✅ |
+| `PAYMENT_METHOD_UNAVAILABLE` | 422 | Đặt đơn chuyển khoản khi MAK chưa cấu hình tài khoản nhận / SePay | ✅ |
+| `PAYOUT_PENDING` | 409 | Đã có yêu cầu rút đang chờ | ✅ |
+| `BANK_ACCOUNT_REQUIRED` | 422 | Rút tiền khi chưa lưu tài khoản ngân hàng | ✅ |
+| `INSUFFICIENT_BALANCE` | 422 | Rút quá số dư ví | ✅ |
 | `INTERNAL_ERROR` | 500 | Lỗi không lường trước (đã log ở server) | ✅ |
 
 ---
@@ -418,7 +526,9 @@ Quy ước cho **mỗi endpoint**: route + validate → controller (`asyncHandle
 | **API-8** Đánh giá | 24/10 – 26/10 | Đánh giá chung cho quán (đổi 08/10): `/restaurants/:idOrSlug/reviews[/me]`, `/merchant/reviews*`, `/admin/reviews*`, `minRating`, `ratingScore` | Mỗi khách 1 đánh giá / quán; 6×4★ xếp trên 1×5★ | ✅ 08/10 |
 | **API-9** Báo cáo & admin còn lại | 26/10 – 29/10 | `/merchant/reports/*`, `/admin/reports/summary`, `/admin/users*`, `/admin/orders*`; FE dashboard chủ quán + admin, quản lý người dùng / đơn, trang tài khoản cho chủ quán / admin | Số liệu khớp dữ liệu test (ranh giới ngày VN, chỉ đơn hoàn thành) | ✅ 09/10 |
 | **API-10** Cứng hóa | 29/10 – 02/11 | Test phân quyền chéo quán cho mọi route; rate limit; CORS production; `helmet`; Cloudinary; xuất Postman/Swagger | Owner A gọi tài nguyên quán B → 404 ở mọi route | 🟡 (chéo quán cho hồ sơ + menu ✅) |
-| API-11 ⏭️ | sau MVP | Refresh token, OTP, nhân viên, ví/payout, VNPay | — | ⏭️ |
+| **API-11** Ví đối soát | 11/10 | Sổ cái kép (`wallets`, `walletentries`), đơn COD hoàn thành trừ hoa hồng, nạp tiền (VietQR, admin xác nhận), rút tiền, khóa / mở nhận đơn theo số dư, job `walletLock`; FE `/owner/wallet`, `/admin/wallets` | Tổng số dư mọi ví luôn = 0; ví âm > 100k hoặc > 3 ngày → quán ngưng nhận đơn, nạp đủ → tự mở | ✅ 11/10 |
+| **W2** Trả trước VietQR + SePay | 11/10 | `PENDING_PAYMENT`, `/payments/sepay/webhook`, `/orders/:id/payment`, hoàn tiền (`refunds`), giao dịch không khớp, job `paymentTimeout`, `sepay:simulate`; FE chọn chuyển khoản ở checkout, `/orders/:id/pay`, tab Hoàn tiền / Giao dịch ngân hàng cho admin | Webhook gửi lại không xử lý 2 lần; tổng số dư vẫn = 0 qua mọi tình huống thừa / thiếu / muộn / hủy | ✅ 11/10 |
+| API-12 ⏭️ | sau MVP | Refresh token, nhân viên, hoàn tiền tự động qua API chi hộ | — | ⏭️ |
 
 ### Checklist tích hợp Frontend
 

@@ -17,6 +17,8 @@ const merchantOrderRoutes = require('./modules/order/order.merchant.routes');
 const notificationRoutes = require('./modules/notification/notification.routes');
 const merchantReviewRoutes = require('./modules/review/review.merchant.routes');
 const merchantReportRoutes = require('./modules/report/report.merchant.routes');
+const walletRoutes = require('./modules/wallet/wallet.routes');
+const paymentRoutes = require('./modules/payment/payment.routes');
 const { PUBLIC_DIR, PUBLIC_URL_PREFIX } = require('./config/storage');
 
 const app = express();
@@ -54,6 +56,8 @@ app.use('/api/menu-items', publicRoutes.menuItemRouter);
 // Chủ quán quản lý quán của mình (trước đây là /api/restaurants/my-restaurant)
 // Đơn của khách
 app.use('/api/orders', orderRoutes);
+// Thanh toán: phương thức đang bật + webhook SePay (xác thực bằng API key, không dùng JWT)
+app.use('/api/payments', paymentRoutes.publicRouter);
 // Thông báo trong app (mọi vai trò)
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/merchant/restaurant', merchantRestaurantRoutes);
@@ -62,6 +66,7 @@ app.use('/api/merchant/menu-items', menuItemRouter);
 app.use('/api/merchant/orders', merchantOrderRoutes);
 app.use('/api/merchant/reviews', merchantReviewRoutes);
 app.use('/api/merchant/reports', merchantReportRoutes);
+app.use('/api/merchant/wallet', walletRoutes.merchantRouter);
 app.use('/api/admin', adminRoutes);
 
 // 404 cho route không tồn tại

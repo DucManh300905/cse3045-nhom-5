@@ -7,6 +7,7 @@ import { useSocketEvent } from '../context/SocketContext';
 import { useToast } from '../context/ToastContext';
 import type { Order, OrderStatus } from '../types';
 import { formatDateTime, formatPrice } from '../utils/format';
+import { PAYMENT_STATUS_LABEL } from '../utils/labels';
 
 const PAGE_SIZE = 10;
 /** API giới hạn limit tối đa 100 */
@@ -14,6 +15,7 @@ const MAX_LIMIT = 100;
 
 // Các bước của đơn (BR-35); đơn tự lấy không có bước "Đang giao"
 const flowOf = (o: Order): { label: string; statuses: OrderStatus[] }[] => [
+  ...(o.paymentMethod === 'BANK_TRANSFER' ? [{ label: 'Chờ thanh toán', statuses: ['PENDING_PAYMENT'] as OrderStatus[] }] : []),
   { label: 'Chờ quán nhận', statuses: ['PLACED'] },
   { label: 'Đang chuẩn bị', statuses: ['ACCEPTED', 'PREPARING'] },
   { label: o.fulfillmentType === 'PICKUP' ? 'Sẵn sàng, mời lấy' : 'Sẵn sàng', statuses: ['READY'] },
@@ -27,6 +29,7 @@ const ENDED: Partial<Record<OrderStatus, string>> = {
 };
 
 const STATUS_NOTICE: Record<string, string> = {
+  PLACED: 'đã nhận thanh toán, chờ quán nhận',
   ACCEPTED: 'quán đã nhận đơn',
   PREPARING: 'quán đang làm món',
   READY: 'món đã xong',
@@ -39,6 +42,7 @@ const STATUS_NOTICE: Record<string, string> = {
 const CANCEL_REASON: Record<string, string> = {
   CUSTOMER_CHANGED_MIND: 'Bạn đã hủy đơn',
   TIMEOUT: 'Quán không phản hồi kịp',
+  PAYMENT_TIMEOUT: 'Quá hạn thanh toán',
   OUT_OF_STOCK: 'Quán hết món',
   OVERLOADED: 'Quán đang quá tải',
   CLOSED: 'Quán đã đóng cửa',
@@ -85,7 +89,7 @@ export default function OrdersPage() {
   useSocketEvent('reconnected', () => load(page));
 
   const cancel = async (o: Order) => {
-    if (!window.confirm(`Hủy đơn ${o.code}?`)) return;
+    if (!window.confirm(`Hủy đơn ${o.code}?${o.paymentStatus === 'PAID' ? ' MAK sẽ hoàn tiền chuyển khoản cho bạn.' : ''}`)) return;
     setBusyId(o.id);
     try {
       const updated = await ordersApi.cancel(o.id);
@@ -150,10 +154,15 @@ export default function OrdersPage() {
                           {o.restaurantSnapshot.slug
                             ? <Link to={`/restaurants/${o.restaurantSnapshot.slug}`} className="link-btn">{o.restaurantSnapshot.name}</Link>
                             : o.restaurantSnapshot.name}
-                          {' · '}{formatDateTime(o.placedAt)} · {o.fulfillmentType === 'PICKUP' ? 'Tự đến lấy' : 'Giao tận nơi'}
+                          {' · '}{formatDateTime(o.placedAt ?? o.createdAt)} · {o.fulfillmentType === 'PICKUP' ? 'Tự đến lấy' : 'Giao tận nơi'}
                         </small>
                       </div>
-                      <strong>{formatPrice(o.total)}</strong>
+                      <div className="order-price">
+                        <strong>{formatPrice(o.total)}</strong>
+                        <small className={`pay-badge s-${o.paymentStatus}`}>
+                          {o.paymentMethod === 'BANK_TRANSFER' ? `Chuyển khoản · ${PAYMENT_STATUS_LABEL[o.paymentStatus] ?? ''}` : 'Tiền mặt'}
+                        </small>
+                      </div>
                     </div>
 
                     {ENDED[o.status] ? (
@@ -203,7 +212,10 @@ export default function OrdersPage() {
                       {o.status === 'COMPLETED' && o.restaurantSnapshot.slug && (
                         <Link to={`/restaurants/${o.restaurantSnapshot.slug}#reviews`} className="btn-soft">★ Đánh giá quán</Link>
                       )}
-                      {o.status === 'PLACED' && (
+                      {o.status === 'PENDING_PAYMENT' && (
+                        <Link to={`/orders/${o.id}/pay`} className="btn-primary">Thanh toán</Link>
+                      )}
+                      {(o.status === 'PLACED' || o.status === 'PENDING_PAYMENT') && (
                         <button className="btn-outline danger-outline" onClick={() => cancel(o)} disabled={busyId === o.id}>
                           {busyId === o.id ? 'Đang hủy...' : 'Hủy đơn'}
                         </button>

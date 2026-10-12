@@ -15,7 +15,8 @@ const toMerchantOrder = (order) => ({
 
 // GET /merchant/orders?status=PLACED,ACCEPTED&from=&to=&page=&limit=
 const listOrders = asyncHandler(async (req, res) => {
-    const filter = { restaurant: req.restaurant._id };
+    // placedAt null = đơn trả trước chưa nhận được tiền -> chưa tới quán
+    const filter = { restaurant: req.restaurant._id, placedAt: { $ne: null } };
     const { status, from, to } = req.query;
 
     if (status) {
@@ -23,7 +24,7 @@ const listOrders = asyncHandler(async (req, res) => {
     }
 
     if (from || to) {
-        filter.placedAt = { ...(from && { $gte: new Date(from) }), ...(to && { $lte: new Date(to) }) };
+        Object.assign(filter.placedAt, from && { $gte: new Date(from) }, to && { $lte: new Date(to) });
     }
 
     // Đơn chờ nhận: cũ nhất lên đầu để không bị bỏ sót; còn lại: mới nhất trước
@@ -41,7 +42,7 @@ const listOrders = asyncHandler(async (req, res) => {
 
 // GET /merchant/orders/:id — đơn quán khác trả 404
 const getOrder = asyncHandler(async (req, res) => {
-    const order = await Order.findOne({ _id: req.params.id, restaurant: req.restaurant._id }).populate(
+    const order = await Order.findOne({ _id: req.params.id, restaurant: req.restaurant._id, placedAt: { $ne: null } }).populate(
         'customer',
         CUSTOMER_FIELDS
     );

@@ -15,6 +15,7 @@ const newKey = () => `key-${Date.now()}-${(keySeq += 1)}`;
 const as = (token) => ({
     get: (url) => request(app).get(url).set('Authorization', `Bearer ${token}`),
     patch: (url, body = {}) => request(app).patch(url).set('Authorization', `Bearer ${token}`).send(body),
+    put: (url, body = {}) => request(app).put(url).set('Authorization', `Bearer ${token}`).send(body),
     post: (url, body = {}, key) => {
         const req = request(app).post(url).set('Authorization', `Bearer ${token}`);
         return (key ? req.set('Idempotency-Key', key) : req).send(body);

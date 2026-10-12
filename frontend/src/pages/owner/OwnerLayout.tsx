@@ -10,7 +10,7 @@ import { useToast } from '../../context/ToastContext';
 import type { MerchantRestaurant } from '../../types';
 import { chimeReady, playChime, unlockChime } from '../../utils/chime';
 import { formatPrice } from '../../utils/format';
-import { STATUS_LABEL } from '../../utils/labels';
+import { STATUS_LABEL, WALLET_LOCK_LABEL } from '../../utils/labels';
 
 interface OwnerContext {
   /** null = chủ quán chưa tạo quán */
@@ -71,6 +71,9 @@ export default function OwnerLayout() {
   useSocketEvent('order:status_changed', () => refreshPending());
   useSocketEvent('reconnected', () => refreshPending());
 
+  // Ví bị khóa / mở lại (API-11) -> tải lại quán để cập nhật banner và trạng thái nhận đơn
+  useSocketEvent('notification:new', n => { if (n.type === 'WALLET_LOCKED' || n.type === 'WALLET_UNLOCKED') load(); });
+
   // Admin duyệt / từ chối / khóa hồ sơ
   useSocketEvent('restaurant:status_changed', e => {
     notify(`Hồ sơ quán: ${STATUS_LABEL[e.status as keyof typeof STATUS_LABEL] ?? e.status}${e.rejectReason ? ` — ${e.rejectReason}` : ''}`);
@@ -100,6 +103,7 @@ export default function OwnerLayout() {
             <NavLink to="/owner/orders" className="nav-link">{ordersLabel}</NavLink>
             <NavLink to="/owner/reviews" className="nav-link">Đánh giá</NavLink>
             <NavLink to="/owner/dashboard" className="nav-link">Thống kê</NavLink>
+            <NavLink to="/owner/wallet" className="nav-link">Ví</NavLink>
             <NavLink to="/owner/account" className="nav-link">Tài khoản</NavLink>
             {restaurant && <span className={`status-chip s-${restaurant.status}`}>{STATUS_LABEL[restaurant.status]}</span>}
             {restaurant && (
@@ -130,11 +134,18 @@ export default function OwnerLayout() {
           <NavLink to="/owner/orders">{ordersLabel}</NavLink>
           <NavLink to="/owner/reviews">Đánh giá</NavLink>
           <NavLink to="/owner/dashboard">Thống kê</NavLink>
+          <NavLink to="/owner/wallet">Ví</NavLink>
           <NavLink to="/owner/account">Tài khoản</NavLink>
         </nav>
       </header>
 
       <main className="container page-body">
+        {restaurant?.walletLockedAt && (
+          <p className="wallet-alert danger">
+            <b>Quán đang tạm ngưng nhận đơn</b> — {WALLET_LOCK_LABEL[restaurant.walletLockReason ?? ''] ?? 'Ví âm'}.{' '}
+            <NavLink to="/owner/wallet" className="link-btn">Nạp tiền để mở lại →</NavLink>
+          </p>
+        )}
         {error ? (
           <div className="empty-state">
             <h2>Không tải được thông tin quán</h2>

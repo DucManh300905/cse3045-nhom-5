@@ -1,3 +1,5 @@
+const mongoose = require('mongoose');
+
 const Notification = require('./notification.model');
 const Restaurant = require('../restaurant/restaurant.model');
 const User = require('../user/user.model');
@@ -18,7 +20,8 @@ const REASON_LABEL = {
     CLOSED: 'Quán sắp đóng cửa',
     OTHER: 'Lý do khác',
     CUSTOMER_CHANGED_MIND: 'Khách đổi ý',
-    TIMEOUT: 'Quán không phản hồi kịp'
+    TIMEOUT: 'Quán không phản hồi kịp',
+    PAYMENT_TIMEOUT: 'Quá hạn thanh toán'
 };
 
 // "Hết món: Hết gà"; hệ thống tự hủy đã có ghi chú đầy đủ ("Quán không phản hồi sau 5 phút") nên dùng luôn
@@ -55,7 +58,7 @@ const orderPlaced = safely(async (order) => {
             user: await ownerOf(order.restaurant),
             type: 'ORDER_NEW',
             title: `Đơn mới ${order.code}`,
-            body: `${itemsCount} món · ${money(order.total)} · ${order.fulfillmentType === 'PICKUP' ? 'Khách tự đến lấy' : 'Giao tận nơi'}`,
+            body: `${itemsCount} món · ${money(order.total)} · ${order.fulfillmentType === 'PICKUP' ? 'Khách tự đến lấy' : 'Giao tận nơi'}${order.paymentMethod === 'BANK_TRANSFER' ? ' · Đã thanh toán' : ''}`,
             data: { orderId: order._id, restaurantId: order.restaurant, code: order.code, link: '/owner/orders' }
         }
     ]);
@@ -66,7 +69,13 @@ const customerMessage = (order) => {
     const shop = order.restaurantSnapshot?.name ?? 'Quán';
     const pickup = order.fulfillmentType === 'PICKUP';
 
+    const prepaid = order.paymentMethod === 'BANK_TRANSFER';
+    const refundNote = order.paymentStatus === 'REFUND_PENDING' ? 'MAK sẽ hoàn tiền chuyển khoản cho bạn' : undefined;
+
     switch (order.status) {
+        case 'PLACED':
+            // Webhook SePay vừa xác nhận tiền
+            return prepaid ? { title: `Đã nhận thanh toán đơn ${order.code}`, body: `${money(order.paidAmount ?? order.total)} · đang chờ ${shop} nhận đơn` } : null;
         case 'ACCEPTED':
             return {
                 title: `${shop} đã nhận đơn ${order.code}`,
@@ -80,7 +89,7 @@ const customerMessage = (order) => {
                 body: pickup ? `Mời bạn đến ${shop} lấy món` : shop
             };
         case 'DELIVERING':
-            return { title: `Đơn ${order.code} đang được giao đến bạn`, body: `Chuẩn bị ${money(order.total)} tiền mặt` };
+            return { title: `Đơn ${order.code} đang được giao đến bạn`, body: prepaid ? 'Đơn đã thanh toán trước' : `Chuẩn bị ${money(order.total)} tiền mặt` };
         case 'COMPLETED':
             // Mời đánh giá quán (API-8): bấm vào mở thẳng phần đánh giá
             return {
@@ -89,9 +98,9 @@ const customerMessage = (order) => {
                 link: order.restaurantSnapshot?.slug ? `/restaurants/${order.restaurantSnapshot.slug}#reviews` : '/orders'
             };
         case 'REJECTED':
-            return { title: `${shop} đã từ chối đơn ${order.code}`, body: reasonText(order.cancelReason) };
+            return { title: `${shop} đã từ chối đơn ${order.code}`, body: [reasonText(order.cancelReason), refundNote].filter(Boolean).join(' · ') || undefined };
         case 'CANCELLED':
-            return { title: `Đơn ${order.code} đã bị hủy`, body: reasonText(order.cancelReason) };
+            return { title: `Đơn ${order.code} đã bị hủy`, body: [reasonText(order.cancelReason), refundNote].filter(Boolean).join(' · ') || undefined };
         default:
             return null;
     }
@@ -114,7 +123,8 @@ const orderStatusChanged = safely(async (order) => {
         }
     }
 
-    if (order.status === 'CANCELLED' && ['CUSTOMER', 'SYSTEM'].includes(last?.actorType)) {
+    // Đơn trả trước chưa thanh toán (placedAt null) chưa tới quán -> không báo chủ quán
+    if (order.status === 'CANCELLED' && order.placedAt && ['CUSTOMER', 'SYSTEM'].includes(last?.actorType)) {
         list.push({
             user: await ownerOf(order.restaurant),
             type: 'ORDER_STATUS',
@@ -190,7 +200,189 @@ const reviewPosted = safely(async (review, created) =>
     ])
 );
 
+// ======================= Ví đối soát (API-11) =======================
+
+const admins = async () => (await User.find({ role: 'ADMIN', status: 'ACTIVE' }).select('_id').lean()).map((a) => a._id);
+const ownerId = (restaurant) => restaurant.owner?._id ?? restaurant.owner;
+const day = (date) => new Intl.DateTimeFormat('vi-VN', { timeZone: TIME_ZONE, dateStyle: 'short', timeStyle: 'short' }).format(date);
+const walletData = (restaurantId, link = '/owner/wallet') => ({ restaurantId, link });
+
+// Ví quán vừa âm (đơn COD hoàn thành trừ hoa hồng) -> nhắc nạp trước hạn
+const walletNegative = safely(async (restaurant, { balance, deadline }) =>
+    notify([
+        {
+            user: ownerId(restaurant),
+            type: 'WALLET_NEGATIVE',
+            title: `Ví quán đang âm ${money(-balance)}`,
+            body: deadline ? `Nạp tiền trước ${day(deadline)} để quán không bị tạm ngưng nhận đơn` : undefined,
+            data: walletData(restaurant._id)
+        }
+    ])
+);
+
+const LOCK_REASON = {
+    OVER_LIMIT: 'Ví âm vượt hạn mức cho phép',
+    OVERDUE: 'Ví âm quá thời hạn cho phép'
+};
+
+const walletLocked = safely(async (restaurant, { reason, balance }) =>
+    notify([
+        {
+            user: ownerId(restaurant),
+            type: 'WALLET_LOCKED',
+            title: `Quán ${restaurant.name} tạm ngưng nhận đơn`,
+            body: `${LOCK_REASON[reason] ?? 'Ví âm'} (${money(balance)}). Nạp tiền để mở lại tự động`,
+            data: walletData(restaurant._id)
+        }
+    ])
+);
+
+const walletUnlocked = safely(async (restaurant) =>
+    notify([
+        {
+            user: ownerId(restaurant),
+            type: 'WALLET_UNLOCKED',
+            title: `Quán ${restaurant.name} đã được mở lại`,
+            body: 'Ví đã hết âm, quán nhận đơn trở lại',
+            data: walletData(restaurant._id)
+        }
+    ])
+);
+
+// Quán tạo lệnh nạp -> admin đối chiếu sao kê
+const topupRequested = safely(async (topup, restaurant) =>
+    notify(
+        (await admins()).map((user) => ({
+            user,
+            type: 'TOPUP_REQUESTED',
+            title: `${restaurant.name} tạo lệnh nạp ${money(topup.amount)}`,
+            body: `Nội dung chuyển khoản: ${topup.code}`,
+            data: walletData(restaurant._id, '/admin/wallets?tab=topups')
+        }))
+    )
+);
+
+const topupProcessed = safely(async (topup) => {
+    const restaurant = await Restaurant.findById(topup.restaurant).select('owner').lean();
+    const confirmed = topup.status === 'CONFIRMED';
+    return notify([
+        {
+            user: restaurant?.owner,
+            type: confirmed ? 'TOPUP_CONFIRMED' : 'TOPUP_REJECTED',
+            title: confirmed
+                ? `Đã nhận ${money(topup.receivedAmount)} nạp vào ví`
+                : `Lệnh nạp ${topup.code} bị từ chối`,
+            body: confirmed ? `Mã ${topup.code}` : topup.rejectReason,
+            data: walletData(topup.restaurant)
+        }
+    ]);
+});
+
+const payoutRequested = safely(async (payout, restaurant) =>
+    notify(
+        (await admins()).map((user) => ({
+            user,
+            type: 'PAYOUT_REQUESTED',
+            title: `${restaurant.name} yêu cầu rút ${money(payout.amount)}`,
+            body: `${payout.bankAccount.bankName} · ${payout.bankAccount.accountNumber} · ${payout.bankAccount.accountName}`,
+            data: walletData(restaurant._id, '/admin/wallets?tab=payouts')
+        }))
+    )
+);
+
+const payoutProcessed = safely(async (payout) => {
+    const restaurant = await Restaurant.findById(payout.restaurant).select('owner').lean();
+    const paid = payout.status === 'PAID';
+    return notify([
+        {
+            user: restaurant?.owner,
+            type: paid ? 'PAYOUT_PAID' : 'PAYOUT_REJECTED',
+            title: paid ? `MAK đã chuyển ${money(payout.amount)} cho quán` : `Yêu cầu rút ${money(payout.amount)} bị từ chối`,
+            body: paid ? (payout.bankRef ? `Mã giao dịch ${payout.bankRef}` : undefined) : `${payout.rejectReason} — tiền đã trả lại ví`,
+            data: walletData(payout.restaurant)
+        }
+    ]);
+});
+
+// ======================= Trả trước (W2) =======================
+
+const REFUND_REASON_LABEL = {
+    ORDER_CANCELLED: 'đơn đã thanh toán bị hủy',
+    LATE_PAYMENT: 'chuyển khoản sau khi đơn đã hết hạn / bị hủy',
+    UNDERPAID: 'chuyển thiếu',
+    OVERPAID: 'chuyển thừa',
+    DUPLICATE: 'chuyển trùng cho đơn đã thanh toán',
+    UNMATCHED: 'giao dịch không khớp'
+};
+
+// Tiền về nhưng không xác nhận được đơn (thiếu / muộn / trùng) -> khách
+const paymentProblem = safely(async (order, refund) => {
+    const title = {
+        UNDERPAID: `Đơn ${order.code}: bạn chuyển thiếu tiền`,
+        LATE_PAYMENT: `Đơn ${order.code} đã hết hạn thanh toán`,
+        DUPLICATE: `Đơn ${order.code} đã được thanh toán trước đó`
+    }[refund.reason];
+    const body =
+        refund.reason === 'UNDERPAID'
+            ? `Đã nhận ${money(refund.amount)}, cần ${money(order.total)}. Khoản này sẽ được hoàn lại — vui lòng chuyển lại đủ số tiền`
+            : `MAK sẽ hoàn lại ${money(refund.amount)} cho bạn`;
+    return notify([{ user: order.customer, type: 'PAYMENT_ISSUE', title, body, data: { orderId: order._id, code: order.code, link: '/orders' } }]);
+});
+
+// Có lệnh hoàn tiền mới -> admin
+const refundCreated = safely(async (refund, order) =>
+    notify(
+        (await admins()).map((user) => ({
+            user,
+            type: 'REFUND_REQUESTED',
+            title: `Cần hoàn ${money(refund.amount)}${order ? ` — đơn ${order.code}` : ''}`,
+            body: `Lý do: ${REFUND_REASON_LABEL[refund.reason] ?? refund.reason}`,
+            data: { orderId: order?._id, code: order?.code, link: '/admin/wallets?tab=refunds' }
+        }))
+    )
+);
+
+const refundDone = safely(async (refund) => {
+    if (!refund.customer) {
+        return [];
+    }
+    const order = refund.order ? await mongoose.model('Order').findById(refund.order).select('code').lean() : null;
+    return notify([
+        {
+            user: refund.customer,
+            type: 'REFUND_DONE',
+            title: `MAK đã hoàn ${money(refund.amount)} cho bạn`,
+            body: [order && `Đơn ${order.code}`, refund.bankRef && `Mã giao dịch ${refund.bankRef}`].filter(Boolean).join(' · ') || undefined,
+            data: { orderId: refund.order, code: order?.code, link: '/orders' }
+        }
+    ]);
+});
+
+// Giao dịch không nhận ra mã -> admin đối soát
+const paymentUnmatched = safely(async (payment, reason) =>
+    notify(
+        (await admins()).map((user) => ({
+            user,
+            type: 'PAYMENT_UNMATCHED',
+            title: `Giao dịch ${money(payment.amount)} chưa khớp đơn`,
+            body: `${reason}. Nội dung: ${(payment.content || '').slice(0, 100)}`,
+            data: { link: '/admin/wallets?tab=payments' }
+        }))
+    )
+);
+
 module.exports = {
+    paymentProblem,
+    refundCreated,
+    refundDone,
+    paymentUnmatched,
+    walletNegative,
+    walletLocked,
+    walletUnlocked,
+    topupRequested,
+    topupProcessed,
+    payoutRequested,
+    payoutProcessed,
     reviewPosted,
     orderPlaced,
     orderStatusChanged,
