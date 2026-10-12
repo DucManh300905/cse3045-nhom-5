@@ -56,7 +56,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) return;
-    const s = io(API_ORIGIN, {
+    // API_ORIGIN rỗng khi build với VITE_API_URL=/api (VPS): truyền undefined để socket nối về đúng trang đang mở
+    const s = io(API_ORIGIN || undefined, {
       // Đọc token mỗi lần (kết nối lại) để dùng token mới sau khi đổi mật khẩu
       auth: cb => cb({ token: localStorage.getItem(TOKEN_KEY) }),
       transports: ['websocket', 'polling'],
