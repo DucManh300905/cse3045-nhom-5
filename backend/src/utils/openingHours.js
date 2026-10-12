@@ -41,10 +41,11 @@ const isWithinOpeningHours = (openingHours = [], date = new Date()) => {
     );
 };
 
-// Quán nhận đơn khi: đã duyệt + đang bật nhận đơn + trong giờ mở cửa (BR-13)
+// Quán nhận đơn khi: đã duyệt + đang bật nhận đơn + ví không bị khóa + trong giờ mở cửa (BR-13)
 const canAcceptOrders = (restaurant, date = new Date()) =>
     restaurant.status === 'APPROVED' &&
     restaurant.isAcceptingOrders === true &&
+    !restaurant.walletLockedAt &&
     isWithinOpeningHours(restaurant.openingHours, date);
 
 module.exports = {

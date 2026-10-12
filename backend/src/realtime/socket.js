@@ -83,7 +83,10 @@ const emitOrderStatusChanged = (order) => {
     };
 
     emit(rooms.user(order.customer), 'order:status_changed', payload);
-    emit(rooms.restaurant(order.restaurant), 'order:status_changed', payload);
+    // Đơn trả trước chưa thanh toán (placedAt null) chưa tới quán
+    if (order.placedAt) {
+        emit(rooms.restaurant(order.restaurant), 'order:status_changed', payload);
+    }
 };
 
 // Admin duyệt / từ chối / khóa quán -> chủ quán

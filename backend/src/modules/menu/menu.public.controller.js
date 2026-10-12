@@ -8,7 +8,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { removeAccents } = require('../../utils/text');
 const { getPagination, paginate, escapeRegex } = require('../../utils/pagination');
 
-const RESTAURANT_FIELDS = 'name slug status isAcceptingOrders openingHours';
+const RESTAURANT_FIELDS = 'name slug status isAcceptingOrders walletLockedAt openingHours';
 
 const SORTS = {
     popular: { soldCount: -1, _id: 1 },

@@ -467,7 +467,9 @@ a.dish-shop:hover { background: var(--orange-deep); }
 
 .checkout-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px; align-items: start; }
 .form-panel { display: grid; gap: 16px; }
-.pay-method { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1.5px solid var(--orange); background: var(--orange-tint); border-radius: var(--radius-sm); }
+.pay-methods { display: grid; gap: 10px; }
+.pay-method { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1.5px solid var(--line); background: var(--card); border-radius: var(--radius-sm); text-align: left; font: inherit; color: inherit; cursor: pointer; width: 100%; }
+.pay-method.active { border-color: var(--orange); background: var(--orange-tint); }
 .pay-method div { display: grid; }
 .pay-method small { color: var(--muted); }
 .summary { position: sticky; top: 90px; display: grid; gap: 6px; }
@@ -943,6 +945,47 @@ fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; 
 }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, -10px); } }
 
+/* ================= Ví đối soát (API-11) ================= */
+.wallet-alert { margin: 0 0 16px; padding: 12px 16px; border-radius: var(--radius-sm); background: var(--orange-tint); border: 1px solid var(--orange-soft); color: var(--ink); font-size: 14px; }
+.wallet-alert.danger { background: var(--danger-soft); border-color: transparent; color: var(--danger); }
+.wallet-alert.info { background: var(--success-soft); border-color: transparent; color: var(--success); }
+.wallet-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+.wallet-cols .panel { display: grid; align-content: start; gap: 12px; }
+.wallet-form { display: grid; gap: 12px; justify-items: start; }
+.wallet-form .field, .wallet-form input { width: 100%; }
+.topup-box { display: grid; gap: 12px; justify-items: start; }
+.qr-img { width: 220px; max-width: 100%; height: auto; border-radius: var(--radius-sm); border: 1px solid var(--line); background: #fff; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; font-size: 14px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .02em; }
+.small-text { font-size: 13px; margin: 0; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.data-table th.num { text-align: right; }
+.amount-neg { color: var(--danger); }
+.amount-pos { color: var(--success); }
+.inline-form.wrap { flex-wrap: wrap; align-items: end; }
+.inline-form .grow { flex: 1; min-width: 200px; }
+.inline-form .grow input, .inline-form input.grow { width: 100%; }
+.data-table.nested { font-size: 13px; }
+.data-table.nested td { padding: 8px 10px; }
+
+/* ================= Thanh toán trả trước (W2) ================= */
+.pay-panel { display: grid; gap: 16px; justify-items: center; text-align: center; }
+.pay-panel .kv, .pay-panel .wallet-alert, .pay-panel .form-actions { width: 100%; text-align: left; }
+.pay-head { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; text-align: left; }
+.pay-head > div { display: grid; }
+.pay-amount { font-family: var(--display); font-size: 30px; line-height: 1.1; color: var(--orange-deep); font-variant-numeric: tabular-nums; }
+.pay-timer { display: grid; justify-items: end; }
+.pay-timer b { font-family: var(--display); font-size: 26px; font-variant-numeric: tabular-nums; }
+.pay-timer.urgent b { color: var(--danger); }
+.qr-img.large { width: 280px; }
+.pay-waiting { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); font-size: 14px; }
+.order-price { display: grid; justify-items: end; gap: 2px; }
+.pay-badge { font-size: 12px; color: var(--muted); }
+.pay-badge.s-PAID { color: var(--success); }
+.pay-badge.s-REFUND_PENDING { color: var(--danger); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
@@ -959,6 +1002,7 @@ fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; 
 }
 
 @media (max-width: 820px) {
+  .wallet-cols { grid-template-columns: 1fr; }
   .checkout-grid { grid-template-columns: 1fr; }
   .summary { position: static; }
   .owner-grid, .menu-admin { grid-template-columns: 1fr; }

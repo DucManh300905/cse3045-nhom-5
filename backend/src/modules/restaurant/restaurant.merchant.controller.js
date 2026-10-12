@@ -214,6 +214,11 @@ const submitRestaurant = asyncHandler(async (req, res) => {
 const setAcceptingOrders = asyncHandler(async (req, res) => {
     const { restaurant } = req;
 
+    // Ví đang bị khóa: bật cũng không nhận được đơn -> báo rõ để chủ quán đi nạp tiền
+    if (req.body.isAcceptingOrders && restaurant.walletLockedAt) {
+        throw new AppError(409, 'WALLET_LOCKED', 'Restaurant is paused until the wallet balance is no longer negative');
+    }
+
     restaurant.isAcceptingOrders = req.body.isAcceptingOrders;
     await restaurant.save();
 

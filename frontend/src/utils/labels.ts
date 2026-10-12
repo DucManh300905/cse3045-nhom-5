@@ -28,6 +28,74 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   REVIEW_UNHIDE: 'Hiện lại đánh giá',
   USER_BLOCK: 'Khóa tài khoản',
   USER_UNBLOCK: 'Mở khóa tài khoản',
+  TOPUP_CONFIRM: 'Xác nhận nạp tiền',
+  TOPUP_REJECT: 'Từ chối nạp tiền',
+  PAYOUT_PAID: 'Đã chuyển tiền cho quán',
+  PAYOUT_REJECT: 'Từ chối rút tiền',
+  WALLET_ADJUST: 'Điều chỉnh ví quán',
+  REFUND_DONE: 'Đã hoàn tiền cho khách',
+  PAYMENT_REFUND: 'Hoàn giao dịch không khớp',
+  PAYMENT_IGNORE: 'Bỏ qua giao dịch không khớp',
+};
+
+/** Trạng thái thanh toán của đơn trả trước */
+export const PAYMENT_STATUS_LABEL: Record<string, string> = {
+  UNPAID: 'Chưa thanh toán',
+  PAID: 'Đã thanh toán',
+  REFUND_PENDING: 'Chờ hoàn tiền',
+  REFUNDED: 'Đã hoàn tiền',
+};
+
+export const REFUND_REASON_LABEL: Record<string, string> = {
+  ORDER_CANCELLED: 'Đơn đã trả bị hủy',
+  LATE_PAYMENT: 'Chuyển sau khi đơn hết hạn',
+  UNDERPAID: 'Chuyển thiếu',
+  OVERPAID: 'Chuyển thừa',
+  DUPLICATE: 'Chuyển trùng',
+  UNMATCHED: 'Giao dịch không khớp',
+};
+
+export const BANK_PAYMENT_STATUS_LABEL: Record<string, string> = {
+  PROCESSING: 'Đang xử lý',
+  MATCHED_ORDER: 'Khớp đơn',
+  MATCHED_TOPUP: 'Khớp lệnh nạp',
+  LATE: 'Muộn → hoàn',
+  UNDERPAID: 'Thiếu → hoàn',
+  DUPLICATE: 'Trùng → hoàn',
+  UNMATCHED: 'Chưa khớp',
+  REFUNDING: 'Đã tạo lệnh hoàn',
+  IGNORED: 'Bỏ qua',
+};
+
+/** Loại dòng sổ ví (API-11) */
+export const WALLET_ENTRY_LABEL: Record<string, string> = {
+  ORDER_SETTLE: 'Đơn hoàn thành',
+  TOPUP: 'Nạp tiền',
+  PAYOUT_REQUEST: 'Yêu cầu rút',
+  PAYOUT_PAID: 'Đã chuyển khoản',
+  PAYOUT_REJECT: 'Hoàn lại (rút bị từ chối)',
+  ADJUSTMENT: 'Điều chỉnh',
+  ORDER_PAYMENT: 'Khách chuyển khoản',
+  REFUND_PENDING: 'Chờ hoàn tiền',
+  REFUND_PAID: 'Đã hoàn tiền',
+};
+
+export const WALLET_LOCK_LABEL: Record<string, string> = {
+  OVER_LIMIT: 'Ví âm vượt hạn mức',
+  OVERDUE: 'Ví âm quá hạn nạp',
+};
+
+export const TOPUP_STATUS_LABEL: Record<string, string> = {
+  PENDING: 'Chờ xác nhận',
+  CONFIRMED: 'Đã nhận',
+  REJECTED: 'Bị từ chối',
+  CANCELLED: 'Đã hủy',
+};
+
+export const PAYOUT_STATUS_LABEL: Record<string, string> = {
+  REQUESTED: 'Chờ chuyển',
+  PAID: 'Đã chuyển',
+  REJECTED: 'Bị từ chối',
 };
 
 /** {status: 'SUBMITTED'} -> {status: 'APPROVED'} thành chuỗi ngắn gọn để hiển thị */

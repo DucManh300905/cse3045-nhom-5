@@ -53,7 +53,8 @@ describe('Thông báo đơn hàng', () => {
         ]);
         expect((await inbox(customerId))[0].body).toMatch(/^Dự kiến món xong lúc \d{2}:\d{2}$/);
         // Chủ quán chỉ có thông báo đơn mới, không nhận lại thao tác của chính mình
-        expect(await inbox(ownerId)).toHaveLength(1);
+        // (ngoài thông báo ví âm do đơn COD hoàn thành trừ hoa hồng — tests/wallet)
+        expect((await inbox(ownerId)).filter((n) => n.type.startsWith('ORDER_'))).toHaveLength(1);
     });
 
     test('quán từ chối -> khách thấy lý do; khách hủy -> chủ quán được báo', async () => {

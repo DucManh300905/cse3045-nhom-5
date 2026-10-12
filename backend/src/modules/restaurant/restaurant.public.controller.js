@@ -55,6 +55,7 @@ const listRestaurants = asyncHandler(async (req, res) => {
         const { dayOfWeek, time } = toLocalParts(new Date());
 
         filter.isAcceptingOrders = true;
+        filter.walletLockedAt = null;
         filter.openingHours = { $elemMatch: { dayOfWeek, open: { $lte: time }, close: { $gt: time } } };
     }
 

@@ -135,6 +135,8 @@ export interface CartLine {
 
 /** Enum trạng thái đơn mới (docs/database.md — orders.status, BR-35) */
 export type OrderStatus =
+  /** Đơn chuyển khoản trả trước đang chờ tiền về (quán chưa thấy) */
+  | 'PENDING_PAYMENT'
   | 'PLACED'
   | 'ACCEPTED'
   | 'REJECTED'
@@ -183,14 +185,46 @@ export interface Order {
   deliveryFee: number;
   discount: number;
   total: number;
-  paymentMethod: 'COD';
-  paymentStatus: 'UNPAID' | 'PAID' | 'REFUNDED';
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  /** Trả trước: nội dung chuyển khoản + hạn thanh toán */
+  paymentCode?: string;
+  paymentDeadline?: string;
+  paidAt?: string;
+  paidAmount?: number;
   status: OrderStatus;
   statusHistory: OrderStatusEvent[];
   cancelReason?: { code: string; note?: string };
   estimatedReadyAt?: string;
-  placedAt: string;
+  /** null khi đơn trả trước chưa thanh toán */
+  placedAt: string | null;
   createdAt: string;
+}
+
+export type PaymentMethod = 'COD' | 'BANK_TRANSFER';
+export type PaymentStatus = 'UNPAID' | 'PAID' | 'REFUND_PENDING' | 'REFUNDED';
+
+/** GET /payments/methods */
+export interface PaymentMethods {
+  COD: boolean;
+  BANK_TRANSFER: boolean;
+  paymentTimeoutMinutes: number;
+}
+
+/** GET /orders/:id/payment — trang quét mã VietQR */
+export interface OrderPaymentInfo {
+  orderId: string;
+  code: string;
+  status: OrderStatus;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  amount: number;
+  paymentCode?: string;
+  paymentDeadline?: string;
+  paidAt?: string;
+  paidAmount?: number;
+  qrUrl: string | null;
+  bank: { bankId: string; accountNo: string; accountName: string } | null;
 }
 
 /** POST /orders/preview — tiền do server tính */
@@ -223,6 +257,10 @@ export interface MerchantRestaurant extends Restaurant {
   isAcceptingOrders: boolean;
   commissionRate: number;
   documents: RestaurantDocument[];
+  /** Ví đối soát âm quá hạn mức / quá hạn -> tạm ngưng nhận đơn (API-11) */
+  walletLockedAt?: string | null;
+  walletLockReason?: WalletLockReason | null;
+  bankAccount?: BankAccount;
 }
 
 export interface MerchantCategory {
@@ -286,7 +324,20 @@ export type NotificationType =
   | 'RESTAURANT_REJECTED'
   | 'RESTAURANT_BLOCKED'
   | 'RESTAURANT_UNBLOCKED'
-  | 'REVIEW_NEW';
+  | 'REVIEW_NEW'
+  | 'WALLET_NEGATIVE'
+  | 'WALLET_LOCKED'
+  | 'WALLET_UNLOCKED'
+  | 'TOPUP_REQUESTED'
+  | 'TOPUP_CONFIRMED'
+  | 'TOPUP_REJECTED'
+  | 'PAYOUT_REQUESTED'
+  | 'PAYOUT_PAID'
+  | 'PAYOUT_REJECTED'
+  | 'PAYMENT_ISSUE'
+  | 'PAYMENT_UNMATCHED'
+  | 'REFUND_REQUESTED'
+  | 'REFUND_DONE';
 
 export interface AppNotification {
   id: string;
@@ -403,4 +454,150 @@ export interface AdminUser {
 export interface AdminOrder extends Omit<Order, 'customer'> {
   customer: { id: string; fullName: string; email?: string; phone?: string } | null;
   commissionAmount: number;
+}
+
+// ================= Ví đối soát (API-11): sổ cái, nạp tiền trả nợ, rút tiền =================
+
+export type WalletLockReason = 'OVER_LIMIT' | 'OVERDUE';
+
+export interface BankAccount {
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+}
+
+export type RestaurantRef = string | { id: string; name: string; slug?: string };
+
+export type TopupStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
+export interface Topup {
+  id: string;
+  code: string;
+  restaurant: RestaurantRef;
+  amount: number;
+  receivedAmount?: number;
+  status: TopupStatus;
+  bankRef?: string;
+  rejectReason?: string;
+  createdAt: string;
+  processedAt?: string;
+  /** Nội dung chuyển khoản (= code) */
+  transferContent: string;
+  /** Ảnh VietQR; null khi MAK chưa cấu hình tài khoản nhận */
+  qrUrl: string | null;
+}
+
+export type PayoutStatus = 'REQUESTED' | 'PAID' | 'REJECTED';
+export interface Payout {
+  id: string;
+  restaurant: RestaurantRef;
+  amount: number;
+  bankAccount: BankAccount;
+  status: PayoutStatus;
+  bankRef?: string;
+  rejectReason?: string;
+  createdAt: string;
+  processedAt?: string;
+}
+
+export type WalletEntryKind =
+  | 'ORDER_SETTLE' | 'TOPUP' | 'PAYOUT_REQUEST' | 'PAYOUT_PAID' | 'PAYOUT_REJECT' | 'ADJUSTMENT'
+  | 'ORDER_PAYMENT' | 'REFUND_PENDING' | 'REFUND_PAID';
+export interface WalletEntry {
+  id: string;
+  kind: WalletEntryKind;
+  /** Có dấu: + cộng vào ví quán, − trừ */
+  amount: number;
+  balanceAfter: number;
+  note?: string;
+  order?: string;
+  createdAt: string;
+}
+
+export interface MerchantWallet {
+  balance: number;
+  available: number;
+  negativeSince: string | null;
+  /** Hạn nạp: quá thời điểm này mà vẫn âm thì quán bị tạm ngưng */
+  lockDeadline: string | null;
+  locked: boolean;
+  lockedAt: string | null;
+  lockReason: WalletLockReason | null;
+  creditLimit: number;
+  graceDays: number;
+  payoutMin: number;
+  topupMin: number;
+  bankAccount: BankAccount | null;
+  pendingPayout: Payout | null;
+  pendingTopup: Topup | null;
+  platformBank: { bankId: string; accountNo: string; accountName: string } | null;
+}
+
+export interface WalletOverview {
+  platformRevenue: number;
+  cashHeld: number;
+  payoutHold: number;
+  owedToRestaurants: number;
+  owedByRestaurants: number;
+  negativeRestaurants: number;
+  lockedRestaurants: number;
+  pendingTopups: number;
+  pendingPayouts: { count: number; amount: number };
+  /** Tiền khách trả trước đang giữ, chờ đơn hoàn thành */
+  escrow: number;
+  /** Tiền phải hoàn cho khách */
+  refundHold: number;
+  pendingRefunds: { count: number; amount: number };
+  unmatchedPayments: number;
+  /** Sổ cái kép: tổng số dư = 0 */
+  balanced: boolean;
+}
+
+export type RefundReason = 'ORDER_CANCELLED' | 'LATE_PAYMENT' | 'UNDERPAID' | 'OVERPAID' | 'DUPLICATE' | 'UNMATCHED';
+export interface Refund {
+  id: string;
+  order?: { id: string; code: string; total: number } | null;
+  payment?: { id: string; referenceCode?: string; gateway?: string; content?: string; transactionDate?: string } | null;
+  customer?: { id: string; fullName: string; phone?: string; email?: string } | null;
+  amount: number;
+  reason: RefundReason;
+  status: 'PENDING' | 'DONE';
+  note?: string;
+  bankRef?: string;
+  createdAt: string;
+  processedAt?: string;
+}
+
+export type BankPaymentStatus = 'PROCESSING' | 'MATCHED_ORDER' | 'MATCHED_TOPUP' | 'LATE' | 'UNDERPAID' | 'DUPLICATE' | 'UNMATCHED' | 'REFUNDING' | 'IGNORED';
+/** Giao dịch SePay báo về */
+export interface BankPayment {
+  id: string;
+  providerTxId: string;
+  gateway?: string;
+  accountNumber?: string;
+  transferType: string;
+  amount: number;
+  content?: string;
+  code?: string;
+  referenceCode?: string;
+  transactionDate?: string;
+  status: BankPaymentStatus;
+  order?: { id: string; code: string } | null;
+  note?: string;
+  createdAt: string;
+}
+
+export interface AdminWallet {
+  id: string;
+  balance: number;
+  negativeSince: string | null;
+  lockDeadline: string | null;
+  restaurant: {
+    id: string;
+    name: string;
+    slug?: string;
+    status: RestaurantStatus;
+    walletLockedAt?: string | null;
+    walletLockReason?: WalletLockReason | null;
+    bankAccount?: BankAccount;
+  } | null;
 }

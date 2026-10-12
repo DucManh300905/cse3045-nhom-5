@@ -201,6 +201,26 @@ const restaurantSchema = new mongoose.Schema(
         ratingScore: {
             type: Number,
             default: 3.5
+        },
+
+        // Ví đối soát (API-11): khóa nhận đơn khi ví âm quá hạn mức / quá hạn, tự mở khi hết âm.
+        // Tách khỏi status BLOCKED (admin khóa tay) và isAcceptingOrders (quán tự bật / tắt).
+        walletLockedAt: {
+            type: Date,
+            default: null
+        },
+
+        walletLockReason: {
+            type: String,
+            enum: ['OVER_LIMIT', 'OVERDUE', null],
+            default: null
+        },
+
+        // Tài khoản nhận tiền khi quán rút tiền
+        bankAccount: {
+            bankName: { type: String, trim: true },
+            accountNumber: { type: String, trim: true },
+            accountName: { type: String, trim: true }
         }
     },
     {

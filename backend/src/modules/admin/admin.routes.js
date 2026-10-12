@@ -22,6 +22,8 @@ const { adminSummary } = require('../report/report.controller');
 const { rangeRules } = require('../report/report.rules');
 const { ORDER_STATUSES } = require('../order/order.model');
 const { listAdminReviews, hideReview } = require('../review/review.controller');
+const { adminRouter: walletAdminRouter } = require('../wallet/wallet.routes');
+const { adminRouter: paymentAdminRouter } = require('../payment/payment.routes');
 
 // Mount tại /api/admin — chỉ ADMIN
 const router = express.Router();
@@ -152,6 +154,12 @@ router.get(
     validate,
     adminSummary
 );
+
+// ---- Ví đối soát (API-11): ví quán, nạp tiền, rút tiền ----
+
+router.use(walletAdminRouter);
+// Trả trước (W2): hoàn tiền, giao dịch SePay
+router.use(paymentAdminRouter);
 
 // ---- Audit log ----
 
