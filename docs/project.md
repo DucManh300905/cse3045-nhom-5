@@ -2,7 +2,7 @@
 
 > Nền tảng đặt đồ ăn online cho các hàng ăn khu vực Hòa Lạc — Nhóm 5, CSE3045.
 > Nguồn: `ke_hoach_backend_merchant.docx` (v1.0 – 06/10/2026), đã điều chỉnh theo code hiện có và Gantt MVP trong `HW3/`.
-> Tài liệu liên quan: [database.md](database.md) · [API.md](API.md)
+> Tài liệu liên quan: [database.md](database.md) · [API.md](API.md) · [scrum.md](scrum.md) (quy trình Scrum, phân vai, backlog Sprint 0)
 > **Cập nhật lần cuối: 06/10/2026** — sau Bước 6b (xem [mục 11 — Nhật ký tiến độ](#11-nhật-ký-tiến-độ-backend)).
 
 Ký hiệu trạng thái: ✅ đã xong · 🟡 đang làm / làm một phần · ⬜ chưa làm · ⏭️ để sau MVP
