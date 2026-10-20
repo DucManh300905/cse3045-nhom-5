@@ -20,7 +20,7 @@ Backend cần chạy song song (`cd ../backend && npm run dev`) để đăng nh�
 | `/menu` | Thẻ **các quán** (xếp theo điểm đánh giá, bấm vào xem toàn bộ món), lọc "Từ 4★"; tìm món toàn hệ thống qua `GET /menu-items` (tìm không dấu, lọc loại món / quán / còn hàng, sắp xếp, "Xem thêm"), giỏ hàng |
 | `/restaurants/:slug` | Trang quán: ảnh bìa, logo, giờ mở cửa hôm nay, đơn tối thiểu, menu theo danh mục, **đánh giá** (1–5 sao, khách đã nhận đơn viết / sửa được; `#reviews` cuộn tới) |
 | `/login` | Đăng nhập / Tạo tài khoản khách hàng (email **hoặc** số điện thoại + tên + mật khẩu + xác nhận). Đăng ký bằng email: bước 2 nhập **mã OTP 6 số** gửi qua Gmail (gửi lại sau 60 s). **Quên mật khẩu?** → mã 6 số qua email → đặt mật khẩu mới (cả `/owner/login`, `/admin/login`) |
-| `/checkout` | Cần đăng nhập. Giao tận nơi (sổ địa chỉ hoặc nhập mới + lưu) hoặc tự đến lấy; tiền do server tính (`POST /orders/preview`); chọn tiền mặt hoặc chuyển khoản VietQR (chỉ hiện khi backend bật SePay); đặt `POST /orders` kèm `Idempotency-Key` |
+| `/checkout` | Cần đăng nhập. Giao tận nơi (sổ địa chỉ hoặc nhập mới + lưu) hoặc tự đến lấy; tiền do server tính (`POST /orders/preview`); nhập mã / chọn voucher dùng được (tối đa 1 voucher quán + 1 voucher MAK); chọn tiền mặt hoặc chuyển khoản VietQR (chỉ hiện khi backend bật SePay); đặt `POST /orders` kèm `Idempotency-Key` |
 | `/orders` | Cần đăng nhập. Đơn từ `GET /orders`, trạng thái tự cập nhật realtime (Socket.IO), hủy khi quán chưa nhận |
 | `/account` | Cần đăng nhập. Sửa hồ sơ, đổi mật khẩu (lưu token mới), sổ địa chỉ (tối đa 5, 1 mặc định) |
 | `/owner/login` | Đăng nhập / tạo tài khoản **chủ quán** |
@@ -28,7 +28,9 @@ Backend cần chạy song song (`cd ../backend && npm run dev`) để đăng nh�
 | `/owner/menu` | Thực đơn: danh mục (thêm, đổi tên, ẩn, sắp xếp, xóa), món (size, topping, giới hạn suất/ngày, ảnh, tạm hết, xóa) |
 | `/owner/orders` | Nhận đơn realtime: tab Chờ nhận / Đang làm / Đã xong, âm báo (bấm "Bật âm báo" một lần), đếm ngược 5' trước khi đơn tự hủy, nhận / từ chối / chuyển bước / hủy kèm lý do |
 | `/owner/dashboard` | Thống kê: doanh thu / thực nhận / số đơn / giá trị TB / tỷ lệ hủy / đánh giá, biểu đồ theo ngày–tuần–tháng, món bán chạy; chọn 7 / 30 / 90 ngày, tháng này hoặc tùy chọn |
+| (bản đồ) | Hồ sơ quán, Sổ địa chỉ, Thanh toán: ghim vị trí trên bản đồ (Leaflet + ảnh nền OpenStreetMap France — tile.openstreetmap.org bị DNS một số nhà mạng VN chặn, CARTO đòi API key; đổi nguồn bằng `VITE_MAP_TILE_URL`), "Dùng vị trí hiện tại", tìm địa chỉ bằng chữ khi backend có `GOONG_API_KEY`. Thanh toán hiện quãng đường + thời gian dự kiến, báo ngoài phạm vi giao. Trang quán: bản đồ nhỏ + "Chỉ đường". Bản đồ được tải lười (chunk riêng) |
 | `/orders/:id/pay` | Thanh toán chuyển khoản trả trước: mã VietQR (số tiền + nội dung điền sẵn), sao chép STK / nội dung, đếm ngược hạn thanh toán, tự chuyển "đã thanh toán" khi SePay báo tiền về (socket + hỏi lại 5 giây), hủy đơn |
+| `/owner/vouchers`, `/admin/vouchers` | Voucher: tạo (số tiền / %, giảm tối đa, đơn tối thiểu, tổng lượt, lượt mỗi khách, thời hạn; admin chọn quán áp dụng), bật / tắt, gia hạn, xóa khi chưa ai dùng, xem lượt dùng. Chủ quán: voucher riêng (quán chịu); admin: voucher MAK (nền tảng chịu) + xem / tắt voucher của quán |
 | `/owner/wallet` | Ví đối soát: số dư (âm = nợ hoa hồng đơn tiền mặt), hạn nạp, tạo mã nạp kèm VietQR, lưu tài khoản ngân hàng, yêu cầu rút, lịch sử giao dịch. Ví bị khóa → banner "tạm ngưng nhận đơn" trên mọi trang chủ quán |
 | `/owner/account`, `/admin/account` | Sửa hồ sơ + đổi mật khẩu cho chủ quán / admin |
 | `/owner/reviews` | Đánh giá của quán: điểm TB + phân bố sao, lọc "chưa trả lời", trả lời / sửa trả lời |
@@ -67,4 +69,4 @@ src/
 
 ## Chưa làm
 
-- Voucher (API-5b).
+- Bản đồ / khoảng cách (sau MVP).

@@ -31,7 +31,7 @@ users 1 ──── 0..1 restaurants            (owner, BR-10)            ✅
 users 1 ──── n    orders                 (customer)                ⬜
 restaurants 1 ── n menucategories 1 ── n menuitems                 ✅
 restaurants 1 ── n orders ── (snapshot) menuitems                  ⬜
-restaurants 1 ── n vouchers ◀── 0..1 orders                        ⬜
+restaurants 1 ── n vouchers ◀── 0..2 orders (voucher quán + MAK)    ✅
 orders 1 ──── 0..1 reviews                                         ⬜
 users 1 ──── n notifications                                       ⬜
 users 1 ──── n auditlogs                 (actor)                   ✅
@@ -194,23 +194,35 @@ Mã đơn dùng thêm collection `counters` (`{ _id: 'order:261006', seq }`, tă
 
 Index: `{ user: 1, key: 1 } unique` (BR-38).
 
-### 3.7 `vouchers` ⬜
+### 3.7 `vouchers` + `voucherredemptions` ✅ (19/10/2026)
+
+File: `modules/voucher/voucher.model.js`, `voucherRedemption.model.js`.
 
 | Field | Kiểu | Ghi chú |
 |---|---|---|
-| `restaurant` | ObjectId | |
-| `code` | String uppercase | |
+| `code` | String uppercase, **unique toàn hệ thống** | 4–20 chữ / số |
+| `description` | String | Khách thấy |
+| `fundedBy` | enum `PLATFORM` `RESTAURANT` | Ai chịu tiền giảm |
+| `restaurant` | ObjectId | Bắt buộc với `RESTAURANT` |
+| `restaurants` | [ObjectId] | `PLATFORM`: rỗng = mọi quán |
 | `type` | enum `PERCENT` `FIXED` | |
 | `value` | Int | % (1–100) hoặc số tiền |
 | `maxDiscount` | Int \| null | bắt buộc với PERCENT (BR-41) |
-| `minOrderAmount` | Int | |
-| `usageLimit` | Int \| null | |
-| `usedCount` | Int | tăng nguyên tử (BR-42) |
-| `perUserLimit` | Int | default 1 |
+| `minOrderAmount` | Int | so với tạm tính |
+| `paymentMethods` | [enum `COD` `BANK_TRANSFER`] | phương thức khách phải chọn để dùng được; mặc định cả hai, không rỗng |
+| `usageLimit` | Int \| null | null = không giới hạn |
+| `usedCount` | Int | tăng / giảm nguyên tử (BR-42, 43) |
+| `perUserLimit` | Int | mặc định 1 |
 | `startAt`, `endAt` | Date | |
 | `isActive` | Boolean | |
+| `createdBy` | ObjectId → users | |
 
-Index: `{ restaurant: 1, code: 1 } unique`. Đếm lượt dùng của 1 user: `orders.countDocuments({ customer, 'voucher.voucherId', status: { $nin: ['REJECTED','CANCELLED'] } })`.
+Index: `code` unique, `{ fundedBy: 1, isActive: 1, endAt: 1 }`, `{ restaurant: 1, createdAt: -1 }`.
+
+**`voucherredemptions`** — một lượt dùng: `{ voucher, customer, order, slot, discount, active }`.
+`slot` = thứ tự lượt đang hiệu lực của khách với voucher; index **unique một phần** `{ voucher, customer, slot }` khi `active: true` → hai đơn đặt song song không vượt `perUserLimit`. Đơn hủy → `active: false`.
+
+**Thêm vào `orders`:** `restaurantDiscount`, `platformDiscount` (Int, mặc định 0), `vouchers: [{ voucher, code, fundedBy, type, value, discount }]`; `discount` = tổng hai phần.
 
 ### 3.8 `reviews` ✅ (đổi 08/10/2026: đánh giá theo quán, không theo đơn)
 
@@ -316,6 +328,15 @@ Trạng thái được đổi trong cùng transaction với việc xác nhận �
 
 ---
 
+### 3.13 Bản đồ: vị trí trên `orders` + `routecaches` ✅ (20/10/2026)
+
+**Thêm vào `orders`:** `delivery.location` (GeoJSON Point — dữ liệu cá nhân, BR-85), `route { distanceKm, durationMinutes, source: ROUTING│ESTIMATE, provider, polyline }`, `estimatedDeliveryMinutes`.
+`restaurants.location` và `users.addresses.location` đã có từ trước (nay bắt buộc khi nộp hồ sơ quán / đặt giao tận nơi).
+
+**`routecaches`** — bộ nhớ đệm định tuyến: `{ key (unique: 'goong|<xe>|<lat,lng 4 số>|<lat,lng 4 số>'), distanceKm, durationMinutes, polyline, provider, createdAt }`, TTL 7 ngày.
+
+---
+
 ## 4. Lưu file (không phải collection)
 
 Cấu hình: `config/storage.js` — thư mục gốc `UPLOAD_DIR` (mặc định `backend/uploads`, đã gitignore; test dùng thư mục tạm).
@@ -377,7 +398,7 @@ const r = await MenuItem.updateOne(
 if (r.modifiedCount === 0) throw new AppError(409, 'ITEM_OUT_OF_STOCK', '...');
 ```
 
-### 6.3 Dùng voucher (BR-42) ⬜
+### 6.3 Dùng voucher (BR-42, 43) ✅ (`voucher.service.js` — `redeemVouchers` khi đặt, `releaseVouchers` khi hủy)
 
 ```js
 await Voucher.updateOne(

@@ -8,11 +8,14 @@ const MenuItem = require('../menu/menuItem.model');
 const Restaurant = require('../restaurant/restaurant.model');
 const AppError = require('../../utils/AppError');
 const { canAcceptOrders, toLocalDateKey } = require('../../utils/openingHours');
-const { canOwnerAdvance } = require('./orderStateMachine');
+const { canOwnerAdvance, OWNER_CANCELLABLE } = require('./orderStateMachine');
 const { emitOrderNew, emitOrderStatusChanged } = require('../../realtime/socket');
 const notifications = require('../notification/notification.service');
 const wallet = require('../wallet/wallet.service');
 const payment = require('../payment/payment.service');
+const voucher = require('../voucher/voucher.service');
+const routing = require('../routing/routing.service');
+const { fromPoint } = require('../../utils/geo');
 
 // Quán đang nhận đơn (BR-12, BR-13). Quán chưa duyệt coi như không tồn tại với khách.
 const findOrderableRestaurant = async (restaurantId, session = null) => {
@@ -27,6 +30,30 @@ const findOrderableRestaurant = async (restaurantId, session = null) => {
     }
 
     return restaurant;
+};
+
+/**
+ * Đơn giao tận nơi: quãng đường thật quán -> nơi nhận, chặn ngoài bán kính giao (BR-82..84).
+ * Quán chưa có vị trí (dữ liệu cũ) hoặc chưa biết nơi nhận -> bỏ qua (BR-80).
+ * Gọi API định tuyến NGOÀI transaction (gọi mạng có thể chậm).
+ */
+const planDelivery = async (restaurant, fulfillmentType, delivery) => {
+    const from = fromPoint(restaurant.location);
+    const to = fromPoint(delivery?.location);
+    if (fulfillmentType !== 'DELIVERY' || !from || !to) {
+        return {};
+    }
+
+    const route = await routing.getRoute(from, to);
+    if (route.distanceKm > restaurant.deliveryRadiusKm) {
+        throw new AppError(422, 'OUT_OF_DELIVERY_RANGE', `Delivery address is ${route.distanceKm} km away, the restaurant delivers within ${restaurant.deliveryRadiusKm} km`, [
+            { field: 'delivery.location', distanceKm: route.distanceKm, maxKm: restaurant.deliveryRadiusKm }
+        ]);
+    }
+
+    // Làm tròn lên 5 phút
+    const minutes = (restaurant.avgPrepMinutes || 0) + route.durationMinutes;
+    return { route, estimatedDeliveryMinutes: Math.ceil(minutes / 5) * 5 };
 };
 
 // Mã đơn theo ngày VN: MAK261006-0001 (bộ đếm nằm trong transaction nên đơn lỗi không làm nhảy số)
@@ -90,7 +117,7 @@ const isDuplicateIdempotencyKey = (error) => error?.code === 11000 && error.keyP
  * Đặt đơn (docs/API.md mục 2.6, thứ tự 8 bước).
  * @returns { order, replayed } — replayed = true khi cùng Idempotency-Key đã tạo đơn trước đó (BR-38)
  */
-const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, delivery, paymentMethod }) => {
+const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, delivery, paymentMethod, voucherCodes = [] }) => {
     // 1. Key đã dùng -> trả lại đơn cũ, không tạo đơn mới
     const findReplay = async () => {
         const existing = await IdempotencyKey.findOne({ user: userId, key });
@@ -108,6 +135,9 @@ const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, 
         throw new AppError(422, 'PAYMENT_METHOD_UNAVAILABLE', 'Bank transfer is not available right now');
     }
 
+    // Quãng đường + bán kính giao (gọi mạng, trước transaction)
+    const plan = await planDelivery(await findOrderableRestaurant(restaurantId), fulfillmentType, delivery);
+
     let order;
 
     try {
@@ -118,7 +148,15 @@ const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, 
             // 3-4. Kiểm tra món, tùy chọn, tính tiền, đơn tối thiểu
             const draft = await buildOrderDraft(restaurant, inputs, fulfillmentType, session);
 
-            // 5. TODO (API-5b): giữ voucher
+            // 5. Voucher (BR-40..45): tính giảm giá; giữ lượt dùng sau khi tạo đơn (bước 7)
+            const applied = await voucher.applyVouchers({
+                codes: voucherCodes,
+                restaurantId: restaurant._id,
+                subtotal: draft.subtotal,
+                customerId: userId,
+                paymentMethod,
+                session
+            });
 
             // 6. Trừ suất nguyên tử
             await reserveStock(draft.qtyByItem, restaurant._id, session);
@@ -143,12 +181,18 @@ const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, 
                         items: draft.items,
                         fulfillmentType,
                         delivery: fulfillmentType === 'DELIVERY' ? delivery : undefined,
+                        route: plan.route,
+                        estimatedDeliveryMinutes: plan.estimatedDeliveryMinutes,
                         subtotal: draft.subtotal,
                         deliveryFee: draft.deliveryFee,
-                        discount: draft.discount,
-                        total: draft.total,
+                        discount: applied.discount,
+                        restaurantDiscount: applied.restaurantDiscount,
+                        platformDiscount: applied.platformDiscount,
+                        vouchers: applied.vouchers,
+                        total: draft.subtotal + draft.deliveryFee - applied.discount,
                         commissionRate: restaurant.commissionRate,
-                        commissionAmount: Math.round(draft.subtotal * restaurant.commissionRate),
+                        // Hoa hồng trên phần quán thực bán: trừ voucher quán tự chịu, không trừ voucher MAK (BR-44)
+                        commissionAmount: Math.round((draft.subtotal - applied.restaurantDiscount) * restaurant.commissionRate),
                         paymentMethod,
                         ...(prepaid && {
                             paymentCode: payment.toPaymentCode(code),
@@ -163,6 +207,7 @@ const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, 
             );
 
             await IdempotencyKey.create([{ key, user: userId, order: order._id }], { session });
+            await voucher.redeemVouchers({ order, session });
         });
     } catch (error) {
         // Hai request cùng key chạy song song: request sau thua ở unique index -> trả đơn của request trước
@@ -172,6 +217,10 @@ const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, 
                 return { order: existing, replayed: true };
             }
             throw new AppError(409, 'DUPLICATE', 'This order request is already being processed');
+        }
+        // Hai đơn song song của cùng khách giành lượt voucher cuối của mình
+        if (voucher.isRedemptionConflict(error)) {
+            throw new AppError(422, 'VOUCHER_USER_LIMIT', 'You have already used this voucher', [{ field: 'voucherCodes' }]);
         }
         throw error;
     }
@@ -186,12 +235,23 @@ const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, 
     return { order, replayed: false };
 };
 
-// Xem trước: cùng logic tính tiền nhưng không lưu, không trừ kho
-const previewOrder = async ({ restaurantId, inputs, fulfillmentType }) => {
+// Xem trước: cùng logic tính tiền (kể cả voucher) nhưng không lưu, không trừ kho, không giữ lượt voucher
+const previewOrder = async ({ restaurantId, inputs, fulfillmentType, voucherCodes = [], userId, paymentMethod = 'COD', delivery }) => {
     const restaurant = await findOrderableRestaurant(restaurantId);
     const draft = await buildOrderDraft(restaurant, inputs, fulfillmentType);
+    const plan = await planDelivery(restaurant, fulfillmentType, delivery);
+    const applied = await voucher.applyVouchers({
+        codes: voucherCodes,
+        restaurantId: restaurant._id,
+        subtotal: draft.subtotal,
+        customerId: userId,
+        paymentMethod
+    });
 
-    return { restaurant, draft };
+    return {
+        restaurant,
+        draft: { ...draft, ...applied, ...plan, total: draft.subtotal + draft.deliveryFee - applied.discount }
+    };
 };
 
 /**
@@ -232,6 +292,8 @@ const transitionAndRelease = async (args) => {
     await mongoose.connection.transaction(async (session) => {
         order = await transitionOrder({ ...args, session });
         await releaseStock(order, session);
+        // Trả lượt dùng voucher (BR-43)
+        await voucher.releaseVouchers(order, session);
 
         // Khách đã chuyển khoản trả trước -> tạo lệnh hoàn tiền (ESCROW -> REFUND_HOLD)
         if (order.paymentStatus === 'PAID') {
@@ -271,18 +333,23 @@ const cancelByCustomer = async ({ orderId, userId, note }) => {
 
 // ======================= Chủ quán (BR-35) =======================
 
-// Quán nhận đơn: PLACED -> ACCEPTED, ước tính giờ xong theo thời gian chuẩn bị TB của quán
+// Quán nhận đơn = bắt đầu làm luôn (19/10/2026): PLACED -> ACCEPTED -> PREPARING trong 1 transaction
+// (lịch sử vẫn ghi đủ 2 bước); ước tính giờ xong theo thời gian chuẩn bị TB của quán
 const acceptByOwner = async ({ orderId, restaurant, userId }) => {
-    const order = await transitionOrder({
-        orderId,
-        filter: { restaurant: restaurant._id },
-        from: 'PLACED',
-        to: 'ACCEPTED',
-        actorType: 'OWNER',
-        actor: userId,
-        set: { estimatedReadyAt: new Date(Date.now() + restaurant.avgPrepMinutes * 60 * 1000) }
+    let order;
+
+    await mongoose.connection.transaction(async (session) => {
+        const common = { orderId, filter: { restaurant: restaurant._id }, actorType: 'OWNER', actor: userId, session };
+        await transitionOrder({
+            ...common,
+            from: 'PLACED',
+            to: 'ACCEPTED',
+            set: { estimatedReadyAt: new Date(Date.now() + restaurant.avgPrepMinutes * 60 * 1000) }
+        });
+        order = await transitionOrder({ ...common, from: 'ACCEPTED', to: 'PREPARING' });
     });
 
+    // Báo 1 lần với trạng thái cuối (khách nhận "quán đã nhận đơn, dự kiến xong lúc ...")
     emitOrderStatusChanged(order);
     await notifications.orderStatusChanged(order);
     return order;
@@ -301,20 +368,27 @@ const rejectByOwner = ({ orderId, restaurant, userId, reasonCode, note }) =>
         set: { cancelReason: { code: reasonCode, note } }
     });
 
-// Quán hủy đơn đã nhận: ACCEPTED -> CANCELLED (bắt buộc lý do), hoàn suất
-const cancelByOwner = ({ orderId, restaurant, userId, reasonCode, note }) =>
-    transitionAndRelease({
+// Quán hủy đơn đã nhận nhưng chưa đi giao: ACCEPTED | PREPARING | READY -> CANCELLED (bắt buộc lý do), hoàn suất
+const cancelByOwner = async ({ orderId, restaurant, userId, reasonCode, note }) => {
+    const current = await Order.findOne({ _id: orderId, restaurant: restaurant._id, placedAt: { $ne: null } }).select('status');
+    if (!current) {
+        throw new AppError(404, 'NOT_FOUND', 'Order not found');
+    }
+
+    return transitionAndRelease({
         orderId,
         filter: { restaurant: restaurant._id },
-        from: 'ACCEPTED',
+        // Trạng thái khác (vd DELIVERING) -> transitionOrder trả 409
+        from: OWNER_CANCELLABLE.includes(current.status) ? current.status : 'PREPARING',
         to: 'CANCELLED',
         actorType: 'OWNER',
         actor: userId,
         reason: note || reasonCode,
         set: { cancelReason: { code: reasonCode, note } }
     });
+};
 
-// Đi tiếp theo luồng chuẩn: ACCEPTED -> PREPARING -> READY -> DELIVERING / COMPLETED
+// Đi tiếp theo luồng chuẩn (orderStateMachine.js): PREPARING -> DELIVERING -> COMPLETED (giao) / PREPARING -> READY -> COMPLETED (tự lấy)
 const advanceByOwner = async ({ orderId, restaurant, userId, to }) => {
     const current = await Order.findOne({ _id: orderId, restaurant: restaurant._id });
 

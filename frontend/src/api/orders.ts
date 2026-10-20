@@ -17,9 +17,12 @@ export interface PlaceOrderInput {
   fulfillmentType: FulfillmentType;
   /** Địa chỉ trong sổ — hoặc gửi delivery */
   addressId?: string;
-  delivery?: { receiverName?: string; phone?: string; addressLine?: string; note?: string };
+  /** lat / lng: vị trí nơi nhận đã ghim (bắt buộc với giao tận nơi nếu địa chỉ trong sổ chưa có vị trí) */
+  delivery?: { receiverName?: string; phone?: string; addressLine?: string; note?: string; lat?: number; lng?: number };
   /** BANK_TRANSFER: trả trước qua VietQR, đơn chờ tiền về rồi mới tới quán */
   paymentMethod?: PaymentMethod;
+  /** Tối đa 1 voucher quán + 1 voucher MAK */
+  voucherCodes?: string[];
 }
 
 /** Khóa chống đặt trùng (BR-38); trình duyệt cũ không có randomUUID thì tự sinh */
@@ -30,7 +33,7 @@ export const newIdempotencyKey = () =>
 
 export const ordersApi = {
   /** Tính tiền, không lưu, không trừ kho */
-  async preview(input: Pick<PlaceOrderInput, 'restaurantId' | 'items' | 'fulfillmentType'>) {
+  async preview(input: Pick<PlaceOrderInput, 'restaurantId' | 'items' | 'fulfillmentType' | 'voucherCodes' | 'paymentMethod' | 'addressId' | 'delivery'>) {
     const res = await client.post<ApiResponse<OrderPreview>>('/orders/preview', input);
     return res.data.data;
   },

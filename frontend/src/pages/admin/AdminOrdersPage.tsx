@@ -10,7 +10,7 @@ const STATUS_TEXT: Record<OrderStatus, string> = {
   PLACED: 'Chờ nhận',
   ACCEPTED: 'Đã nhận',
   PREPARING: 'Đang làm',
-  READY: 'Xong món',
+  READY: 'Chờ khách lấy',
   DELIVERING: 'Đang giao',
   COMPLETED: 'Hoàn thành',
   REJECTED: 'Từ chối',

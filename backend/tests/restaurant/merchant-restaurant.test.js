@@ -17,6 +17,9 @@ const sampleRestaurant = (overrides = {}) => ({
     name: 'Cơm Gà Hòa Lạc',
     address: 'Thôn 3, Thạch Hòa, Thạch Thất',
     phone: '+84 912 345 678',
+    // Vị trí bắt buộc khi nộp hồ sơ (BR-80)
+    lat: 21.0136,
+    lng: 105.5254,
     ...overrides
 });
 
@@ -93,7 +96,7 @@ describe('POST /merchant/restaurant', () => {
         ['SĐT sai', { phone: '123' }],
         ['đơn tối thiểu là số lẻ (BR-21)', { minOrderAmount: 10000.5 }],
         ['đơn tối thiểu âm', { minOrderAmount: -1 }],
-        ['chỉ có lat không có lng', { lat: 21 }]
+        ['chỉ có lat không có lng', { lat: 21, lng: undefined }]
     ])('400 khi %s', async (_, overrides) => {
         const res = await api.create(sampleRestaurant(overrides));
 

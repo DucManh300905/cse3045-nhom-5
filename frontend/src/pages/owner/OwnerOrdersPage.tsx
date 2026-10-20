@@ -7,6 +7,7 @@ import { useToast } from '../../context/ToastContext';
 import type { MerchantOrder, OrderStatus, OwnerReasonCode } from '../../types';
 import { formatPrice } from '../../utils/format';
 import { useOwner } from './OwnerLayout';
+import { directionsUrl, formatKm, fromPoint } from '../../utils/geo';
 
 /** Đơn chờ quá thời gian này sẽ bị hệ thống tự hủy (BR-36, backend ORDER_TIMEOUT_MINUTES) */
 const TIMEOUT_MINUTES = 5;
@@ -22,7 +23,7 @@ const STATUS_TEXT: Record<OrderStatus, string> = {
   PLACED: 'Chờ nhận',
   ACCEPTED: 'Đã nhận',
   PREPARING: 'Đang làm',
-  READY: 'Món đã xong',
+  READY: 'Chờ khách lấy',
   DELIVERING: 'Đang giao',
   COMPLETED: 'Hoàn thành',
   REJECTED: 'Đã từ chối',
@@ -45,14 +46,29 @@ const CANCEL_TEXT: Record<string, string> = {
   OTHER: 'Lý do khác',
 };
 
-/** Nhãn nút cho bước tiếp theo */
-const nextLabel = (o: MerchantOrder) =>
-  ({
-    PREPARING: 'Bắt đầu làm',
-    READY: 'Món đã xong',
-    DELIVERING: 'Đi giao',
-    COMPLETED: o.fulfillmentType === 'PICKUP' ? 'Khách đã lấy · Đã thu tiền' : 'Đã giao · Đã thu tiền',
-  } as Partial<Record<OrderStatus, string>>)[o.nextStatus ?? 'PLACED'];
+/**
+ * Luồng rút gọn (19/10/2026): Nhận đơn (= đang làm) → Đi giao → Đã giao; tự lấy: → Món đã xong → Khách đã lấy.
+ * Nhãn nút cho bước tiếp theo + câu hỏi xác nhận (các bước không quay lại được, tránh bấm nhầm).
+ */
+const nextStep = (o: MerchantOrder): { label: string; confirm?: string } | null => {
+  const pickup = o.fulfillmentType === 'PICKUP';
+  const paid = o.paymentMethod === 'BANK_TRANSFER';
+  switch (o.nextStatus) {
+    case 'PREPARING':
+      return { label: 'Bắt đầu làm' };
+    case 'READY':
+      return { label: 'Món đã xong', confirm: `Đơn ${o.code} đã làm xong? Khách sẽ được báo đến lấy món.` };
+    case 'DELIVERING':
+      return { label: 'Đi giao', confirm: `Đơn ${o.code} đã làm xong và bắt đầu đi giao?\nSau bước này không hủy đơn được nữa.` };
+    case 'COMPLETED':
+      return {
+        label: pickup ? `Khách đã lấy${paid ? '' : ' · Đã thu tiền'}` : `Đã giao${paid ? '' : ' · Đã thu tiền'}`,
+        confirm: `Xác nhận ${pickup ? 'khách đã lấy' : 'đã giao'} đơn ${o.code}${paid ? '' : ` và đã thu ${formatPrice(o.total)} tiền mặt`}?\nĐơn sẽ hoàn thành, không đổi lại được.`,
+      };
+    default:
+      return null;
+  }
+};
 
 const time = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '');
 
@@ -141,7 +157,13 @@ export default function OwnerOrdersPage() {
       {!restaurant.canAcceptOrders && (
         <p className="form-error">
           Quán hiện <b>không nhận đơn mới</b>
-          {restaurant.status !== 'APPROVED' ? ' (hồ sơ chưa được duyệt).' : !restaurant.isAcceptingOrders ? ' — bật "Đang nhận đơn" ở trang Hồ sơ quán.' : ' (ngoài giờ mở cửa).'}
+          {restaurant.status !== 'APPROVED'
+            ? ' (hồ sơ chưa được duyệt).'
+            : restaurant.walletLockedAt
+              ? ' — ví đang âm, nạp tiền ở trang Ví để mở lại.'
+              : !restaurant.isAcceptingOrders
+                ? ' — bật "Đang nhận đơn" ở trang Hồ sơ quán.'
+                : ' (ngoài giờ mở cửa — kiểm tra giờ mở cửa ở trang Hồ sơ quán).'}
           {' '}Đơn đang dở vẫn xử lý bình thường.
         </p>
       )}
@@ -220,12 +242,21 @@ export default function OwnerOrdersPage() {
                     <div>
                       <small>Giao đến</small>
                       <b>{o.delivery.addressLine}</b>
+                      {fromPoint(o.delivery.location) && (
+                        <a className="link-btn" href={directionsUrl(fromPoint(o.delivery.location)!)} target="_blank" rel="noreferrer">
+                          🧭 Chỉ đường{o.route ? ` · ${formatKm(o.route.distanceKm)}` : ''}
+                        </a>
+                      )}
                       {o.delivery.note && <small className="item-note">“{o.delivery.note}”</small>}
                     </div>
                   )}
                   <div className="kitchen-total">
-                    <small>{o.paymentStatus === 'PAID' ? 'Đã thu tiền mặt' : 'Thu tiền mặt'}</small>
+                    <small>
+                      {o.paymentMethod === 'BANK_TRANSFER' ? 'Khách đã chuyển khoản' : o.paymentStatus === 'PAID' ? 'Đã thu tiền mặt' : 'Thu tiền mặt'}
+                    </small>
                     <strong>{formatPrice(o.total)}</strong>
+                    {!!o.restaurantDiscount && <small className="muted">Voucher quán −{formatPrice(o.restaurantDiscount)}</small>}
+                    {!!o.platformDiscount && <small className="muted" title="MAK cộng phần này vào ví quán khi đơn hoàn thành">MAK bù +{formatPrice(o.platformDiscount)}</small>}
                     {o.paymentMethod === 'BANK_TRANSFER' && <span className="tag" title="Khách đã chuyển khoản trước — không thu tiền mặt">Đã thanh toán</span>}
                   </div>
                 </div>
@@ -278,18 +309,25 @@ export default function OwnerOrdersPage() {
                         </button>
                       </>
                     )}
-                    {o.status === 'ACCEPTED' && (
+                    {['ACCEPTED', 'PREPARING', 'READY'].includes(o.status) && (
                       <button className="btn-outline danger-outline" disabled={busy} onClick={() => openReason(o.id, 'cancel')}>Hủy đơn</button>
                     )}
-                    {o.status !== 'PLACED' && o.nextStatus && (
-                      <button
-                        className="btn-primary"
-                        disabled={busy}
-                        onClick={() => act(o, () => merchantApi.advanceOrder(o.id, o.nextStatus!), `${o.code}: ${STATUS_TEXT[o.nextStatus!]}`)}
-                      >
-                        {busy ? 'Đang xử lý...' : nextLabel(o)}
-                      </button>
-                    )}
+                    {o.status !== 'PLACED' && o.nextStatus && (() => {
+                      const step = nextStep(o);
+                      if (!step) return null;
+                      return (
+                        <button
+                          className="btn-primary"
+                          disabled={busy}
+                          onClick={() => {
+                            if (step.confirm && !window.confirm(step.confirm)) return;
+                            act(o, () => merchantApi.advanceOrder(o.id, o.nextStatus!), `${o.code}: ${STATUS_TEXT[o.nextStatus!]}`);
+                          }}
+                        >
+                          {busy ? 'Đang xử lý...' : step.label}
+                        </button>
+                      );
+                    })()}
                   </div>
                 )}
               </li>

@@ -10,6 +10,10 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { removeAccents } = require('../../utils/text');
 const { toLocalParts } = require('../../utils/openingHours');
 const { getPagination, paginate, escapeRegex } = require('../../utils/pagination');
+const { isLatLng } = require('../../utils/geo');
+
+// ?lat=&lng= của người xem (để hiện khoảng cách); sai định dạng thì bỏ qua
+const viewerOf = (req) => (isLatLng(req.query) ? { lat: Number(req.query.lat), lng: Number(req.query.lng) } : undefined);
 
 const SORTS = {
     // Điểm có trọng số (review.service): quán ít đánh giá không vượt quán nhiều đánh giá tốt
@@ -63,7 +67,7 @@ const listRestaurants = asyncHandler(async (req, res) => {
 
     return res.status(200).json({
         success: true,
-        data: { ...result, items: result.items.map(toPublicRestaurantResponse) }
+        data: { ...result, items: result.items.map((r) => toPublicRestaurantResponse(r, viewerOf(req))) }
     });
 });
 
@@ -73,7 +77,7 @@ const getRestaurant = asyncHandler(async (req, res) => {
 
     return res.status(200).json({
         success: true,
-        data: toPublicRestaurantResponse(restaurant)
+        data: toPublicRestaurantResponse(restaurant, viewerOf(req))
     });
 });
 

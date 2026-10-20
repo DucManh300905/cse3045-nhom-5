@@ -36,6 +36,9 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   REFUND_DONE: 'Đã hoàn tiền cho khách',
   PAYMENT_REFUND: 'Hoàn giao dịch không khớp',
   PAYMENT_IGNORE: 'Bỏ qua giao dịch không khớp',
+  VOUCHER_CREATE: 'Tạo voucher',
+  VOUCHER_UPDATE: 'Sửa voucher',
+  VOUCHER_DELETE: 'Xóa voucher',
 };
 
 /** Trạng thái thanh toán của đơn trả trước */

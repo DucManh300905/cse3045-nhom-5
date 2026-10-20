@@ -29,19 +29,26 @@ const itemRules = [
     body('items.*.optionIds').optional().isArray({ max: 30 }).withMessage('optionIds must be an array'),
     body('items.*.optionIds.*').isMongoId().withMessage('optionIds must contain option ids'),
     body('items.*.qty').isInt({ min: 1, max: MAX_QTY }).withMessage(`qty must be between 1 and ${MAX_QTY}`).toInt(),
-    body('items.*.note').optional().isString().trim().isLength({ max: 200 }).withMessage('note is too long')
-];
-
-const deliveryRules = [
+    body('items.*.note').optional().isString().trim().isLength({ max: 200 }).withMessage('note is too long'),
+    // Tối đa 1 voucher quán + 1 voucher MAK
+    body('voucherCodes').optional().isArray({ max: 2 }).withMessage('voucherCodes must be an array of at most 2 codes'),
+    body('voucherCodes.*').isString().trim().isLength({ min: 1, max: 20 }).withMessage('voucher code is not valid'),
+    // Vị trí nơi nhận (xem trước cũng cần để tính đường đi + kiểm tra bán kính giao)
     body('addressId').optional().isMongoId().withMessage('addressId is not valid'),
-    textRule('delivery.receiverName', 100).optional(),
-    phoneRule('delivery.phone').optional(),
-    textRule('delivery.addressLine', 255).optional(),
-    body('delivery.note').optional().isString().trim().isLength({ max: 200 }).withMessage('note is too long'),
+    body('delivery.lat').optional().isFloat({ min: -90, max: 90 }).withMessage('delivery.lat is not valid').toFloat(),
+    body('delivery.lng').optional().isFloat({ min: -180, max: 180 }).withMessage('delivery.lng is not valid').toFloat(),
+    // Xem trước cũng cần biết phương thức để kiểm tra voucher chỉ áp cho tiền mặt / chuyển khoản
     body('paymentMethod')
         .optional()
         .isIn(PAYMENT_METHODS)
         .withMessage(`paymentMethod must be one of ${PAYMENT_METHODS.join(', ')}`)
+];
+
+const deliveryRules = [
+    textRule('delivery.receiverName', 100).optional(),
+    phoneRule('delivery.phone').optional(),
+    textRule('delivery.addressLine', 255).optional(),
+    body('delivery.note').optional().isString().trim().isLength({ max: 200 }).withMessage('note is too long')
 ];
 
 const idRule = param('id').isMongoId().withMessage('Order not found');

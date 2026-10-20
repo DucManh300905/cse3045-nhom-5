@@ -232,17 +232,21 @@ Quy tắc giá: có `variants` → `basePrice` tự bằng giá biến thể m�
 | POST | `/merchant/orders/:id/cancel` | `{ reasonCode, note? }` ACCEPTED → CANCELLED, hoàn tồn kho | BR-35, 37 | ✅ |
 | POST | `/merchant/orders/:id/extend-prep` | Xin thêm thời gian | | ⏭️ |
 
-**Voucher, đánh giá, báo cáo** ⬜
+**Voucher, đánh giá, báo cáo** — voucher ✅ xem mục 2.12
 
 | Method | Path | Mô tả | BR | |
 |---|---|---|---|---|
-| GET / POST | `/merchant/vouchers` | Danh sách / tạo voucher | BR-40, 41 | ⬜ |
-| PUT / DELETE | `/merchant/vouchers/:id` | Sửa / tắt (không xóa nếu đã dùng) | | ⬜ |
+| GET / POST | `/merchant/vouchers` | Danh sách / tạo voucher quán (mục 2.12) | BR-40, 41 | ✅ |
+| PATCH / DELETE | `/merchant/vouchers/:id` | Sửa / tắt; không xóa / không đổi mức giảm nếu đã dùng | BR-45 | ✅ |
 | GET | `/merchant/reviews` | Đánh giá của quán (kể cả bị ẩn, có cờ), `?rating=`, `?replied=false` | | ✅ |
 | PUT | `/merchant/reviews/:id/reply` | `{ content }` trả lời / sửa trả lời; đánh giá quán khác → 404 | BR-61 | ✅ |
 | GET | `/merchant/reports/summary` | `?from&to` (YYYY-MM-DD giờ VN, mặc định 30 ngày, tối đa 366) → `totalOrders`, `completedOrders`, `cancelledOrders`, `activeOrders`, `itemsSold`, `grossRevenue`, `commission`, `netRevenue`, `avgOrderValue`, `cancelRate` (trên đơn đã kết thúc), rating. Doanh thu chỉ tính đơn `COMPLETED`, theo ngày đặt | BR-52 | ✅ |
 | GET | `/merchant/reports/revenue` | `?from&to&groupBy=day\|week\|month` → `series` đủ mọi kỳ (kỳ trống = 0; tuần bắt đầu thứ Hai; `period` = ngày đầu kỳ) | BR-51 | ✅ |
 | GET | `/merchant/reports/top-items` | `?from&to&limit=10` → món theo số phần (đơn hoàn thành), cùng số phần thì doanh thu cao trước | | ✅ |
+
+> **Luồng xử lý đơn rút gọn (19/10/2026):** `POST /merchant/orders/:id/accept` chuyển thẳng `PLACED → ACCEPTED → PREPARING` (lịch sử ghi đủ 2 bước, phát 1 sự kiện `order:status_changed` với `to: PREPARING`).
+> Giao tận nơi: `PREPARING → DELIVERING → COMPLETED` (bỏ `READY`). Tự lấy: `PREPARING → READY → COMPLETED`. Quán hủy được (kèm lý do) khi `ACCEPTED`, `PREPARING`, `READY`; đã `DELIVERING` → 409.
+> Đơn cũ đang ở `ACCEPTED` / `READY` (giao tận nơi) vẫn đi tiếp được. Giao diện chủ quán hỏi lại trước "Món đã xong", "Đi giao", "Đã giao / Khách đã lấy".
 
 ### 2.6 Đơn hàng của khách — `/orders` 🟡 (đặt / xem / hủy ✅, đánh giá ⬜)
 
@@ -265,12 +269,13 @@ Quy tắc giá: có `variants` → `basePrice` tự bằng giá biến thể m�
   "items": [ { "menuItemId": "…", "variantId": "…", "optionIds": ["…", "…"], "qty": 2, "note": "ít đá" } ],
   "addressId": "…",
   "delivery": { "receiverName": "Nguyễn Văn A", "phone": "0912345678", "addressLine": "KTX ĐH Việt Nhật, Hòa Lạc", "note": "" },
-  "voucherCode": "GIAM10K",
+  "voucherCodes": ["QUAN10K", "MAK10"],
   "paymentMethod": "COD" }
 
 // 201
 { "success": true, "data": { "id": "…", "code": "MAK261006-0042", "status": "PLACED",
-  "subtotal": 64000, "deliveryFee": 0, "discount": 10000, "total": 54000, "items": [ … ] } }
+  "subtotal": 64000, "deliveryFee": 0, "discount": 15000, "restaurantDiscount": 10000, "platformDiscount": 5000,
+  "total": 49000, "vouchers": [ { "code": "QUAN10K", "fundedBy": "RESTAURANT", "discount": 10000 }, … ], "items": [ … ] } }
 ```
 `addressId` (từ sổ địa chỉ) hoặc `delivery` — gửi một trong hai (đơn `PICKUP` không cần). Có `addressId` thì `delivery.note` vẫn được dùng làm ghi chú.
 `fulfillmentType`: `DELIVERY` (mặc định, quán tự giao) | `PICKUP`. **Miễn phí giao hàng**: `deliveryFee` luôn = 0. Mã đơn `MAK<yyMMdd theo giờ VN>-<số thứ tự trong ngày>`.
@@ -281,7 +286,7 @@ Thứ tự xử lý ở server (trong 1 transaction):
 2. Quán `canAcceptOrders` (BR-12, 13 — đã có hàm `canAcceptOrders()`) → nếu không: 422 `RESTAURANT_CLOSED`.
 3. Mỗi dòng: món thuộc quán, `isOrderable`, variant/option hợp lệ và `isAvailable`, đủ `minSelect/maxSelect` (BR-22) → 422 `INVALID_OPTIONS`.
 4. Tính `unitPrice`, `subtotal` từ DB (BR-31); kiểm tra `minOrderAmount` (BR-32) → 422 `BELOW_MIN_ORDER`.
-5. Kiểm tra & giữ voucher (BR-40..42) → 422 `VOUCHER_INVALID`.
+5. Kiểm tra voucher (BR-40..45, mục 2.12) → 422 `VOUCHER_*`; lượt dùng được giữ ở bước 7 sau khi tạo đơn.
 6. Trừ tồn kho nguyên tử (BR-34) → 409 `ITEM_OUT_OF_STOCK` kèm `menuItemId`.
 7. Tạo đơn `PLACED` + snapshot + `commissionAmount`; lưu idempotency key.
 8. Sau commit: phát Socket `order:new` tới quán ✅, tạo notification cho chủ quán ✅.
@@ -445,6 +450,71 @@ Mã được tìm trong `code`, `content`, `description` sau khi bỏ dấu các
 
 ---
 
+### 2.12 Voucher ✅ (API-5b, 19/10/2026)
+
+**Hai loại** (quyết định 19/10/2026):
+| Loại | Ai tạo | Ai chịu tiền giảm | Phạm vi |
+|---|---|---|---|
+| `PLATFORM` (voucher MAK) | Admin | Nền tảng — khi đơn hoàn thành, ví quán được cộng lại phần giảm (mục 2.10) | Mọi quán, hoặc danh sách `restaurants` |
+| `RESTAURANT` (voucher quán) | Chủ quán | Quán | Chỉ quán đó |
+
+**Áp vào đơn:** `voucherCodes: ["QUAN10K", "MAK10"]` ở `POST /orders/preview` và `POST /orders`.
+- Tối đa **1 voucher quán + 1 voucher MAK** mỗi đơn; nhiều hơn → 422 `VOUCHER_STACK_LIMIT`.
+- Voucher quán trừ trước trên tạm tính; voucher MAK trừ tiếp trên phần còn lại. Tổng giảm ≤ tạm tính.
+- `PERCENT`: `floor(base × value / 100)`, tối đa `maxDiscount`. `FIXED`: `value`.
+- Đơn tối thiểu (`minOrderAmount`) so với **tạm tính trước giảm giá**.
+- Áp cho cả giao tận nơi / tự lấy. **Phương thức thanh toán**: người tạo chọn `paymentMethods` = `["COD"]`, `["BANK_TRANSFER"]` hoặc cả hai (mặc định); khách chọn sai → `VOUCHER_INVALID` / `WRONG_PAYMENT_METHOD` (kèm `paymentMethods`). Xem trước gửi kèm `paymentMethod` để kiểm tra. Đơn trả trước: khách chuyển `total` (đã trừ giảm giá).
+- **Hoa hồng** = `round((subtotal − restaurantDiscount) × commissionRate)` — quán không trả hoa hồng trên khoản tự giảm; voucher MAK không làm giảm hoa hồng.
+- Đơn lưu `restaurantDiscount`, `platformDiscount`, `discount` (tổng) và snapshot `vouchers[]`.
+- Lượt dùng giữ ngay khi đặt (trong transaction), **trả lại khi đơn bị hủy / từ chối / hết hạn thanh toán**.
+- Doanh thu quán trong báo cáo = `total + platformDiscount` (phần MAK bù là doanh thu của quán).
+
+Lỗi (`errors[0].code` = mã voucher; `errors[0].reason` cho `VOUCHER_INVALID`):
+| `code` | Khi nào | `reason` |
+|---|---|---|
+| `VOUCHER_INVALID` (422) | Mã không dùng được | `NOT_FOUND`, `INACTIVE`, `NOT_STARTED`, `EXPIRED`, `WRONG_RESTAURANT`, `WRONG_PAYMENT_METHOD` (+ `paymentMethods`), `BELOW_MIN_ORDER` (+ `minOrderAmount`) |
+| `VOUCHER_EXHAUSTED` (422) | Hết tổng lượt (`usedCount ≥ usageLimit`) | |
+| `VOUCHER_USER_LIMIT` (422) | Khách đã dùng hết `perUserLimit` lượt (mặc định 1) | |
+| `VOUCHER_STACK_LIMIT` (422) | Quá 2 mã hoặc 2 mã cùng loại | |
+| `VOUCHER_IN_USE` (409) | Sửa mức giảm / xóa voucher đã có người dùng | |
+
+| Method | Endpoint | Ai | Mô tả | |
+|---|---|---|---|---|
+| GET | `/vouchers/available?restaurantId=` | 👤 Khách | Voucher còn dùng được ở quán: đang hiệu lực, còn lượt, khách chưa dùng hết lượt | ✅ |
+| GET / POST | `/merchant/vouchers` | 🏪 Chủ quán | Danh sách (`?status=ACTIVE\|INACTIVE\|EXPIRED&q=`) / tạo voucher quán. Quán phải `APPROVED`, không bị khóa | ✅ |
+| PATCH / DELETE | `/merchant/vouchers/:id` | 🏪 | Sửa / xóa. Đã có người dùng: chỉ sửa `description`, `endAt`, `usageLimit` (≥ `usedCount`), `perUserLimit`, `isActive`; không xóa được | ✅ |
+| GET | `/merchant/vouchers/:id/usage` | 🏪 | Các đơn đã dùng + `summary { uses, totalDiscount }` | ✅ |
+| GET / POST / PATCH / DELETE | `/admin/vouchers[/:id]` | 🛡️ Admin | Như trên; tạo voucher MAK (`restaurants: [id]` để giới hạn quán); xem / tắt cả voucher của quán (`?fundedBy=`). Audit `VOUCHER_CREATE/UPDATE/DELETE` | ✅ |
+| GET | `/admin/vouchers/:id/usage` | 🛡️ | Lượt dùng | ✅ |
+
+Body tạo: `{ code (4–20 chữ/số, tự viết hoa, duy nhất toàn hệ thống), description?, type: PERCENT|FIXED, value, maxDiscount (bắt buộc với PERCENT), minOrderAmount?, paymentMethods? (COD / BANK_TRANSFER, ít nhất 1, mặc định cả hai), usageLimit? (null = không giới hạn), perUserLimit? (mặc định 1), startAt, endAt, isActive? }`. Mã trùng → 409 `DUPLICATE`.
+
+---
+
+### 2.13 Bản đồ & quãng đường giao ✅ (bản tối giản, 20/10/2026)
+
+Đặc tả đầy đủ: file *"MAK Food — Đặc tả Bản đồ & Khoảng cách (v2)"*. Quy tắc BR-80 → BR-85 (docs/project.md).
+
+- **Quãng đường** quán → nơi nhận lấy từ **Goong Direction** (đường đi thật, xe máy) qua module `backend/src/modules/routing/`.
+  Chưa có `GOONG_API_KEY`, Goong lỗi hoặc quá `ROUTING_TIMEOUT_MS` → **ước lượng** đường chim bay × 1,3 (`source: ESTIMATE`). Kết quả Goong được lưu đệm 7 ngày (`routecaches`).
+- **Bắt buộc vị trí** cho đơn giao tận nơi (BR-81): địa chỉ trong sổ đã ghim, hoặc gửi `delivery.lat` / `delivery.lng`
+  (địa chỉ cũ chưa ghim → server lưu luôn vào sổ). Thiếu → 422 `LOCATION_REQUIRED`.
+- **Ngoài bán kính** `deliveryRadiusKm` của quán → 422 `OUT_OF_DELIVERY_RANGE` (`errors[0]`: `distanceKm`, `maxKm`). Quán chưa có vị trí (dữ liệu cũ) → bỏ qua kiểm tra.
+- **Nộp hồ sơ quán** phải có vị trí (BR-80) → thiếu: 422 `PROFILE_INCOMPLETE` với `field: location`.
+
+| Method | Endpoint | Mô tả | |
+|---|---|---|---|
+| POST | `/orders/preview` | Nhận thêm `addressId` / `delivery.lat` / `delivery.lng`; trả `route { distanceKm, durationMinutes, source, provider }` + `estimatedDeliveryMinutes` (null khi chưa có vị trí) | ✅ |
+| POST | `/orders` | Như trên; đơn lưu `delivery.location`, `route` (kèm `polyline` nếu có), `estimatedDeliveryMinutes` | ✅ |
+| GET | `/restaurants?lat=&lng=` · `/restaurants/:idOrSlug?lat=&lng=` | Thêm `distanceKm` ước lượng tới người xem (không gọi API định tuyến cho cả danh sách) | ✅ |
+| GET | `/geo/status` | Công khai: `{ search, routing: goong│estimate }` | ✅ |
+| GET | `/geo/autocomplete?input=&lat=&lng=` | 🔐 Gợi ý địa chỉ (Goong AutoComplete); chưa có khóa → 503 `GEO_UNAVAILABLE`; tối đa `GEO_RATE_LIMIT` (60) lần / phút | ✅ |
+| GET | `/geo/place/:placeId` · `/geo/reverse?lat=&lng=` | 🔐 Tọa độ của gợi ý · địa chỉ của điểm vừa ghim | ✅ |
+
+Biến môi trường: `GOONG_API_KEY`, `ROUTING_PROVIDER` (goong / estimate), `GOONG_VEHICLE` (mặc định `bike`), `ROUTING_TIMEOUT_MS` (3000), `GEO_RATE_LIMIT`.
+
+---
+
 ## 3. Realtime — Socket.IO ✅
 
 File: `src/realtime/socket.js` (server) · `frontend/src/context/SocketContext.tsx` (`useSocketEvent`). Cùng cổng với REST.
@@ -499,7 +569,11 @@ Mất kết nối: FE tải lại danh sách đơn khi kết nối lại (`useSo
 | `BELOW_MIN_ORDER` | 422 | BR-32 | ✅ |
 | `MULTIPLE_RESTAURANTS` | 422 | BR-30 | ✅ |
 | `INVALID_OPTIONS` | 422 | BR-22 — sai biến thể, topping hết, chọn thiếu/thừa so với `minSelect`/`maxSelect` | ✅ |
-| `VOUCHER_INVALID` / `VOUCHER_EXHAUSTED` | 422 | BR-40..42 | ⬜ |
+| `VOUCHER_INVALID` / `VOUCHER_EXHAUSTED` / `VOUCHER_USER_LIMIT` / `VOUCHER_STACK_LIMIT` | 422 | BR-40..45 (mục 2.12) | ✅ |
+| `VOUCHER_IN_USE` | 409 | Sửa mức giảm / xóa voucher đã có người dùng | ✅ |
+| `LOCATION_REQUIRED` | 422 | Đơn giao tận nơi chưa ghim vị trí nơi nhận (BR-81) | ✅ |
+| `OUT_OF_DELIVERY_RANGE` | 422 | Quãng đường > bán kính giao của quán (BR-83) | ✅ |
+| `GEO_UNAVAILABLE` / `GEO_FAILED` | 503 / 502 | Chưa cấu hình / lỗi dịch vụ tra địa chỉ | ✅ |
 | `WALLET_LOCKED` | 409 | Bật nhận đơn khi ví đang khóa (BR-55) | ✅ |
 | `PAYMENT_METHOD_UNAVAILABLE` | 422 | Đặt đơn chuyển khoản khi MAK chưa cấu hình tài khoản nhận / SePay | ✅ |
 | `PAYOUT_PENDING` | 409 | Đã có yêu cầu rút đang chờ | ✅ |
@@ -520,7 +594,7 @@ Quy ước cho **mỗi endpoint**: route + validate → controller (`asyncHandle
 | **API-2** Merchant: quán | 15/10 – 17/10 | `/merchant/restaurant`; `loadMyRestaurant`; giờ mở cửa; upload ảnh/giấy tờ; `submit`; `accepting-orders` | Luồng onboarding có test end-to-end | ✅ 06/10 |
 | **API-3** Admin duyệt quán | 17/10 | `/admin/restaurants*` approve/reject/block/unblock/commission + xem giấy tờ + audit log | Owner nộp → admin duyệt → owner bật nhận đơn (test) | ✅ 06/10 (thông báo realtime ⬜) |
 | **API-4** Menu | 17/10 – 19/10 | `/merchant/categories`, `/merchant/menu-items`; public `/restaurants`, `/restaurants/:idOrSlug/menu`, `/menu-items`; `seed:demo` | FE `/menu` chạy bằng API, xóa `data/menu.ts` | ✅ 06/10 |
-| **API-5** Đặt đơn | 19/10 – 21/10 | `/orders/preview`, `POST /orders` (8 bước mục 2.6), idempotency — **7a**; voucher — **7b** | 5 request mua 1 suất cuối → 1 thành công, 4 lỗi 409 | 🟡 7a ✅ 06/10 (voucher 7b ⬜) |
+| **API-5** Đặt đơn | 19/10 – 21/10 | `/orders/preview`, `POST /orders` (8 bước mục 2.6), idempotency — **7a**; voucher — **7b** | 5 request mua 1 suất cuối → 1 thành công, 4 lỗi 409 | ✅ 7a 06/10 · voucher 7b 19/10 |
 | **API-6** Xử lý đơn + realtime | 21/10 – 23/10 | `orderStateMachine.js`; `/merchant/orders*`; `/orders/:id/cancel`; Socket.IO; job timeout + reset suất | Bảng chuyển trạng thái BR-35 được test đủ từng ô | ✅ 06/10 |
 | **API-7** Thông báo | 23/10 – 24/10 | `/notifications*` + `notification:new` + báo duyệt/từ chối quán | Chuông thông báo trên FE | ✅ 08/10 |
 | **API-8** Đánh giá | 24/10 – 26/10 | Đánh giá chung cho quán (đổi 08/10): `/restaurants/:idOrSlug/reviews[/me]`, `/merchant/reviews*`, `/admin/reviews*`, `minRating`, `ratingScore` | Mỗi khách 1 đánh giá / quán; 6×4★ xếp trên 1×5★ | ✅ 08/10 |

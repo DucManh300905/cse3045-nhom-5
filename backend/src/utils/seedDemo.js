@@ -12,9 +12,10 @@ const MenuItem = require('../modules/menu/menuItem.model');
 const img = (id) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=640&q=75`;
 
 const SHOPS = [
-    { key: 'a', name: 'Quán A', phone: '0911000001', closesAt: '17:59', cuisineTypes: ['COM', 'BANH_MI'] },
-    { key: 'b', name: 'Quán B', phone: '0911000002', closesAt: '20:00', cuisineTypes: ['BUN_PHO', 'DO_UONG'] },
-    { key: 'c', name: 'Quán C', phone: '0911000003', closesAt: '21:00', cuisineTypes: ['AN_VAT', 'DO_UONG'] }
+    // lat/lng: điểm minh họa quanh khu Hòa Lạc (chủ quán ghim lại vị trí thật ở trang Hồ sơ quán)
+    { key: 'a', name: 'Quán A', phone: '0911000001', closesAt: '17:59', cuisineTypes: ['COM', 'BANH_MI'], lat: 21.0136, lng: 105.5254 },
+    { key: 'b', name: 'Quán B', phone: '0911000002', closesAt: '20:00', cuisineTypes: ['BUN_PHO', 'DO_UONG'], lat: 21.0092, lng: 105.5183 },
+    { key: 'c', name: 'Quán C', phone: '0911000003', closesAt: '21:00', cuisineTypes: ['AN_VAT', 'DO_UONG'], lat: 21.0178, lng: 105.5302 }
 ];
 
 // stock -> dailyLimit, popularity -> soldCount
@@ -96,7 +97,9 @@ const seedDemo = async ({ password = process.env.DEMO_PASSWORD || 'Demo@123', lo
             submittedAt: restaurant.submittedAt || new Date(),
             isAcceptingOrders: true,
             openingHours: Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, open: '06:00', close: shop.closesAt })),
-            minOrderAmount: 20000
+            minOrderAmount: 20000,
+            location: { type: 'Point', coordinates: [shop.lng, shop.lat] },
+            deliveryRadiusKm: 5
         });
         await restaurant.save();
 

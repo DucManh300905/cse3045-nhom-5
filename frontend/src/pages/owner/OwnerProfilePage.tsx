@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent, type FormEvent } from 'react';
+import { useCallback, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { assetUrl, getErrorMessage } from '../../api/client';
 import { merchantApi, type RestaurantInput } from '../../api/merchant';
@@ -6,6 +6,9 @@ import { useToast } from '../../context/ToastContext';
 import type { DocumentType, MerchantRestaurant, OpeningHour } from '../../types';
 import { formatDateTime, PHONE_REGEX } from '../../utils/format';
 import { DAY_NAMES as DAYS, DOCUMENTS, STATUS_LABEL } from '../../utils/labels';
+import { closedReason, describeTime } from '../../utils/openingHours';
+import { LocationPicker } from '../../components/LazyMap';
+import { fromPoint, type LatLng } from '../../utils/geo';
 import { useOwner } from './OwnerLayout';
 
 const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp';
@@ -96,7 +99,11 @@ function StatusPanel() {
           {r.status === 'BLOCKED' && <small>Liên hệ quản trị viên để được mở khóa. Bạn chỉ xem được dữ liệu.</small>}
           {r.status === 'APPROVED' && (
             <small>
-              {r.isOpenNow ? 'Đang trong giờ mở cửa.' : 'Hiện ngoài giờ mở cửa — khách chưa đặt được.'}{' '}
+              {r.canAcceptOrders
+                ? 'Quán đang nhận đơn.'
+                : r.isOpenNow
+                  ? (r.walletLockedAt ? 'Quán đang tạm ngưng vì ví âm — khách chưa đặt được.' : 'Đang trong giờ mở cửa nhưng chưa bật "Đang nhận đơn" — khách chưa đặt được.')
+                  : `${closedReason(r)?.full ?? 'Ngoài giờ mở cửa'} — khách chưa đặt được.`}{' '}
               <Link to={`/restaurants/${r.slug}`} className="link-btn">Xem trang quán →</Link>
             </small>
           )}
@@ -151,9 +158,12 @@ function InfoPanel() {
   const { restaurant, setRestaurant } = useOwner();
   const notify = useToast();
   const [form, setForm] = useState(() => toForm(restaurant));
+  const [location, setLocation] = useState<LatLng | null>(() => fromPoint(restaurant?.location));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const setField = (k: keyof typeof form, v: string) => setForm(f => ({ ...f, [k]: v }));
+  // Ghim trên bản đồ -> gợi ý điền ô địa chỉ nếu còn trống
+  const fillAddress = useCallback((a: string) => setForm(f => (f.address.trim() ? f : { ...f, address: a })), []);
   const locked = restaurant?.status === 'SUBMITTED' || restaurant?.status === 'BLOCKED';
   const digits = (v: string) => v.replace(/\D/g, '');
 
@@ -162,6 +172,7 @@ function InfoPanel() {
     if (!form.name.trim()) return setError('Vui lòng nhập tên quán.');
     if (form.address.trim().length < 5) return setError('Vui lòng nhập địa chỉ quán.');
     if (!PHONE_REGEX.test(form.phone)) return setError('Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0.');
+    if (!location) return setError('Vui lòng ghim vị trí quán trên bản đồ (để tính quãng đường giao cho khách).');
     const radius = Number(form.deliveryRadiusKm);
     if (!(radius >= 0.5 && radius <= 30)) return setError('Bán kính giao hàng từ 0,5 đến 30 km.');
     const prep = Number(form.avgPrepMinutes);
@@ -176,6 +187,8 @@ function InfoPanel() {
       minOrderAmount: Number(form.minOrderAmount || 0),
       deliveryRadiusKm: radius,
       avgPrepMinutes: prep,
+      lat: location.lat,
+      lng: location.lng,
     };
     setError('');
     setSaving(true);
@@ -202,6 +215,10 @@ function InfoPanel() {
           <span>Địa chỉ *</span>
           <input value={form.address} onChange={e => setField('address', e.target.value)} placeholder="vd: Số 5, Thôn 3, Thạch Hòa, Thạch Thất" maxLength={255} />
         </label>
+        <div className="field">
+          <span>Vị trí quán trên bản đồ *</span>
+          <LocationPicker value={location} onChange={setLocation} onAddress={fillAddress} disabled={locked} />
+        </div>
         <div className="form-grid">
           <label>
             <span>Số điện thoại quán *</span>
@@ -357,6 +374,11 @@ function HoursPanel() {
 
   const update = (d: number, fn: (slots: Slot[]) => Slot[]) => setDays(all => all.map((s, i) => (i === d ? fn(s) : s)));
   const copyToAll = (d: number) => setDays(all => all.map(() => all[d].map(s => ({ ...s }))));
+  const ALL_DAY: Slot = { open: '00:00', close: '23:59' };
+  const allDayEveryDay = () => setDays(all => all.map(() => [{ ...ALL_DAY }]));
+
+  // Khung giờ đóng từ trưa trở về trước: thường do nhầm "12:00 CH" (12 giờ trưa) với nửa đêm
+  const earlyClose = (s: Slot) => !!s.close && s.close <= '12:00';
 
   const save = async () => {
     for (const d of DAY_ORDER) {
@@ -367,6 +389,11 @@ function HoursPanel() {
         if (i > 0 && sorted[i - 1].close > sorted[i].open) return setError(`${DAYS[d]}: các khung giờ bị chồng nhau.`);
       }
     }
+    const early = DAY_ORDER.filter(d => days[d].length > 0 && days[d].every(earlyClose));
+    if (early.length && !window.confirm(
+      `${early.map(d => DAYS[d]).join(', ')}: quán đóng cửa từ trưa (${days[early[0]].map(s => s.close).join(', ')}).\n` +
+      'Lưu ý "12:00 CH" là 12 giờ TRƯA. Nếu muốn mở tới nửa đêm, hãy chọn 11:59 CH (23:59).\n\nVẫn lưu giờ này?'
+    )) return;
     setError('');
     setSaving(true);
     try {
@@ -388,6 +415,11 @@ function HoursPanel() {
         <h2>Giờ mở cửa</h2>
         <small className="muted">Giờ Việt Nam. Một ngày có thể có nhiều khung giờ (vd sáng và tối).</small>
       </div>
+      <p className="hours-tip">
+        Ô giờ có thể hiện kiểu <b>SA</b> (sáng) / <b>CH</b> (chiều–tối): <b>12:00 CH = 12 giờ trưa</b>, <b>11:59 CH = gần nửa đêm</b>.
+        Cách đọc của từng ô được ghi ngay bên dưới để bạn kiểm tra.
+        {!locked && <> <button type="button" className="link-btn" onClick={allDayEveryDay}>Mở cả ngày, mọi ngày (00:00–23:59)</button></>}
+      </p>
       <fieldset className="plain" disabled={locked}>
         <ul className="hours-list">
           {DAY_ORDER.map(d => (
@@ -396,11 +428,17 @@ function HoursPanel() {
               <div className="slots">
                 {days[d].length === 0 && <span className="muted">Nghỉ</span>}
                 {days[d].map((s, i) => (
-                  <span key={i} className="slot">
-                    <input type="time" value={s.open} onChange={e => update(d, sl => sl.map((x, j) => (j === i ? { ...x, open: e.target.value } : x)))} aria-label={`${DAYS[d]} mở`} />
-                    –
-                    <input type="time" value={s.close} onChange={e => update(d, sl => sl.map((x, j) => (j === i ? { ...x, close: e.target.value } : x)))} aria-label={`${DAYS[d]} đóng`} />
-                    <button type="button" className="icon-btn" onClick={() => update(d, sl => sl.filter((_, j) => j !== i))} aria-label="Xóa khung giờ">×</button>
+                  <span key={i} className={earlyClose(s) ? 'slot-wrap warn' : 'slot-wrap'}>
+                    <span className="slot">
+                      <input type="time" value={s.open} onChange={e => update(d, sl => sl.map((x, j) => (j === i ? { ...x, open: e.target.value } : x)))} aria-label={`${DAYS[d]} mở`} />
+                      –
+                      <input type="time" value={s.close} onChange={e => update(d, sl => sl.map((x, j) => (j === i ? { ...x, close: e.target.value } : x)))} aria-label={`${DAYS[d]} đóng`} />
+                      <button type="button" className="icon-btn" onClick={() => update(d, sl => sl.filter((_, j) => j !== i))} aria-label="Xóa khung giờ">×</button>
+                    </span>
+                    <small className="slot-hint">
+                      {s.open && s.close ? `${describeTime(s.open)} → ${describeTime(s.close)}` : 'Chọn đủ giờ mở và giờ đóng'}
+                      {earlyClose(s) && ' · đóng từ trưa — nếu muốn tới nửa đêm, chọn 11:59 CH'}
+                    </small>
                   </span>
                 ))}
               </div>
@@ -412,6 +450,7 @@ function HoursPanel() {
                 >
                   + Khung giờ
                 </button>
+                <button type="button" className="link-btn muted" onClick={() => update(d, () => [{ ...ALL_DAY }])}>Cả ngày</button>
                 {days[d].length > 0 && <button type="button" className="link-btn muted" onClick={() => copyToAll(d)}>Áp dụng mọi ngày</button>}
               </div>
             </li>

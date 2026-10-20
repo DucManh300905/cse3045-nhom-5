@@ -39,19 +39,18 @@ describe('Thông báo đơn hàng', () => {
         expect(await inbox(customerId)).toHaveLength(0);
 
         await owner.post(`${M}/${order.id}/accept`).expect(200);
-        for (const to of ['PREPARING', 'READY', 'DELIVERING', 'COMPLETED']) {
+        for (const to of ['DELIVERING', 'COMPLETED']) {
             await owner.post(`${M}/${order.id}/status`, { to }).expect(200);
         }
 
+        // Luồng rút gọn: nhận đơn (= đang làm) -> đi giao -> đã giao, mỗi bước 1 thông báo
         const titles = (await inbox(customerId)).map((n) => n.title);
         expect(titles).toEqual([
             `Quán Test đã nhận đơn ${order.code}`,
-            `Đơn ${order.code} đang được chuẩn bị`,
-            `Đơn ${order.code} đã xong, quán sắp giao`,
             `Đơn ${order.code} đang được giao đến bạn`,
-            `Đơn ${order.code} đã hoàn thành`
+            `Đơn ${order.code} đã được giao`
         ]);
-        expect((await inbox(customerId))[0].body).toMatch(/^Dự kiến món xong lúc \d{2}:\d{2}$/);
+        expect((await inbox(customerId))[0].body).toMatch(/^Đang chuẩn bị · dự kiến xong lúc \d{2}:\d{2}$/);
         // Chủ quán chỉ có thông báo đơn mới, không nhận lại thao tác của chính mình
         // (ngoài thông báo ví âm do đơn COD hoàn thành trừ hoa hồng — tests/wallet)
         expect((await inbox(ownerId)).filter((n) => n.type.startsWith('ORDER_'))).toHaveLength(1);
@@ -96,6 +95,7 @@ describe('Thông báo hồ sơ quán', () => {
             address: 'Hòa Lạc',
             phone: '0912345678',
             openingHours: allDay,
+            location: { type: 'Point', coordinates: [105.5254, 21.0136] },
             documents: [doc('BUSINESS_LICENSE'), doc('ID_CARD')]
         });
 

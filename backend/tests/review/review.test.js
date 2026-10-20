@@ -185,7 +185,7 @@ describe('Xếp hạng và bộ lọc', () => {
         const order = await placeOrder(as(token), shop, { fulfillmentType: 'PICKUP' });
         const owner = as(shop.ownerToken);
         await owner.post(`/api/merchant/orders/${order.id}/accept`).expect(200);
-        for (const to of ['PREPARING', 'READY', 'COMPLETED']) {
+        for (const to of ['READY', 'COMPLETED']) {
             await owner.post(`/api/merchant/orders/${order.id}/status`, { to }).expect(200);
         }
 

@@ -103,6 +103,7 @@ export default function OwnerLayout() {
             <NavLink to="/owner/orders" className="nav-link">{ordersLabel}</NavLink>
             <NavLink to="/owner/reviews" className="nav-link">Đánh giá</NavLink>
             <NavLink to="/owner/dashboard" className="nav-link">Thống kê</NavLink>
+            <NavLink to="/owner/vouchers" className="nav-link">Voucher</NavLink>
             <NavLink to="/owner/wallet" className="nav-link">Ví</NavLink>
             <NavLink to="/owner/account" className="nav-link">Tài khoản</NavLink>
             {restaurant && <span className={`status-chip s-${restaurant.status}`}>{STATUS_LABEL[restaurant.status]}</span>}
@@ -134,6 +135,7 @@ export default function OwnerLayout() {
           <NavLink to="/owner/orders">{ordersLabel}</NavLink>
           <NavLink to="/owner/reviews">Đánh giá</NavLink>
           <NavLink to="/owner/dashboard">Thống kê</NavLink>
+          <NavLink to="/owner/vouchers">Voucher</NavLink>
           <NavLink to="/owner/wallet">Ví</NavLink>
           <NavLink to="/owner/account">Tài khoản</NavLink>
         </nav>

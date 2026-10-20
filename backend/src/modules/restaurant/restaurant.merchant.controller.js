@@ -185,6 +185,11 @@ const submitRestaurant = asyncHandler(async (req, res) => {
         missing.push({ field: 'openingHours', msg: 'Opening hours are required' });
     }
 
+    // BR-80: cần vị trí quán để tính quãng đường giao
+    if (!restaurant.location?.coordinates?.length) {
+        missing.push({ field: 'location', msg: 'Restaurant location is required' });
+    }
+
     REQUIRED_DOCUMENTS.forEach((type) => {
         if (!restaurant.documents.some((d) => d.type === type)) {
             missing.push({ field: 'documents', msg: `Document ${type} is required` });

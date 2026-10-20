@@ -7,7 +7,7 @@ const { TIME_ZONE, toLocalDateKey } = require('../../utils/openingHours');
 // Báo cáo (API-9). Quy ước:
 // - Khoảng ngày theo giờ VN (UTC+7, không có giờ mùa hè): from 00:00 -> hết ngày `to`. Mặc định 30 ngày gần nhất.
 // - Đơn tính theo ngày ĐẶT (placedAt).
-// - Doanh thu chỉ tính đơn COMPLETED (BR-52): gross = Σ total, commission = Σ commissionAmount, net = gross − commission.
+// - Doanh thu chỉ tính đơn COMPLETED (BR-52): gross = Σ (total + phần voucher MAK bù), commission = Σ commissionAmount, net = gross − commission.
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_DAYS = 366;
@@ -51,6 +51,9 @@ const matchOf = (range, extra = {}) => ({ placedAt: { $gte: range.start, $lt: ra
 
 const asId = (id) => new mongoose.Types.ObjectId(String(id));
 
+// Doanh thu của quán từ 1 đơn = tiền khách trả + phần voucher MAK bù (voucher quán thì quán tự chịu)
+const REVENUE = { $add: ['$total', { $ifNull: ['$platformDiscount', 0] }] };
+
 /** Số đơn theo trạng thái + tiền của đơn hoàn thành trong khoảng */
 const orderTotals = async (range, extra = {}) => {
     const [row] = await Order.aggregate([
@@ -62,7 +65,7 @@ const orderTotals = async (range, extra = {}) => {
                 completedOrders: { $sum: { $cond: [{ $eq: ['$status', 'COMPLETED'] }, 1, 0] } },
                 cancelledOrders: { $sum: { $cond: [{ $in: ['$status', CANCELLED] }, 1, 0] } },
                 activeOrders: { $sum: { $cond: [{ $in: ['$status', ACTIVE] }, 1, 0] } },
-                grossRevenue: { $sum: { $cond: [{ $eq: ['$status', 'COMPLETED'] }, '$total', 0] } },
+                grossRevenue: { $sum: { $cond: [{ $eq: ['$status', 'COMPLETED'] }, REVENUE, 0] } },
                 commission: { $sum: { $cond: [{ $eq: ['$status', 'COMPLETED'] }, '$commissionAmount', 0] } },
                 itemsSold: {
                     $sum: { $cond: [{ $eq: ['$status', 'COMPLETED'] }, { $sum: '$items.qty' }, 0] }
@@ -130,7 +133,7 @@ const revenueSeries = async (range, groupBy = 'day', extra = {}) => {
                 },
                 orders: { $sum: 1 },
                 completedOrders: { $sum: { $cond: [{ $eq: ['$status', 'COMPLETED'] }, 1, 0] } },
-                grossRevenue: { $sum: { $cond: [{ $eq: ['$status', 'COMPLETED'] }, '$total', 0] } },
+                grossRevenue: { $sum: { $cond: [{ $eq: ['$status', 'COMPLETED'] }, REVENUE, 0] } },
                 commission: { $sum: { $cond: [{ $eq: ['$status', 'COMPLETED'] }, '$commissionAmount', 0] } }
             }
         }
@@ -181,7 +184,7 @@ const topRestaurants = async (range, limit = 5) =>
                 name: { $last: '$restaurantSnapshot.name' },
                 slug: { $last: '$restaurantSnapshot.slug' },
                 completedOrders: { $sum: 1 },
-                grossRevenue: { $sum: '$total' },
+                grossRevenue: { $sum: REVENUE },
                 commission: { $sum: '$commissionAmount' }
             }
         },

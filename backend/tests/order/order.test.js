@@ -82,7 +82,7 @@ describe('POST /orders', () => {
 
     test('giao đến địa chỉ trong sổ (addressId); địa chỉ không tồn tại -> 404; thiếu địa chỉ -> 400', async () => {
         const address = (
-            await customer.post('/api/users/me/addresses', { receiverName: 'B', phone: '0911222333', addressLine: 'Phòng 305' })
+            await customer.post('/api/users/me/addresses', { receiverName: 'B', phone: '0911222333', addressLine: 'Phòng 305', lat: 21.006, lng: 105.52 })
         ).body.data;
         const body = { restaurantId: shop.restaurant.id, items: [{ menuItemId: shop.rice.id, qty: 1 }] };
 

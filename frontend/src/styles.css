@@ -653,6 +653,11 @@ fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; 
 .slot { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 4px; background: var(--orange-tint); border-radius: var(--radius-sm); }
 .slot input:not([type='checkbox']):not([type='radio']) { width: auto; padding: 6px 8px; }
 .hours-actions { display: flex; gap: 14px; justify-content: flex-end; }
+.hours-tip { margin: 0 0 6px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--orange-tint); font-size: 13.5px; }
+.slot-wrap { display: inline-grid; gap: 3px; }
+.slot-hint { font-size: 12px; color: var(--muted); padding-left: 4px; }
+.slot-wrap.warn .slot { background: var(--danger-soft); }
+.slot-wrap.warn .slot-hint { color: var(--danger); font-weight: 600; }
 .link-btn.muted { color: var(--muted); }
 .icon-btn { width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--card); color: var(--muted); font-size: 16px; line-height: 1; display: inline-grid; place-items: center; flex-shrink: 0; }
 .icon-btn:hover:not(:disabled) { background: var(--orange-soft); color: var(--orange-deep); }
@@ -986,6 +991,47 @@ fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; 
 .pay-badge.s-PAID { color: var(--success); }
 .pay-badge.s-REFUND_PENDING { color: var(--danger); }
 
+/* ================= Voucher ================= */
+.method-pick { border: 0; margin: 0; padding: 0; }
+.method-pick > div { display: flex; gap: 18px; flex-wrap: wrap; }
+.method-pick .check { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.method-pick .check input { width: 18px; height: 18px; }
+.voucher-box { display: grid; gap: 8px; padding: 12px 0; border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line); }
+.voucher-input { display: flex; gap: 8px; }
+.voucher-input input { flex: 1; min-width: 0; text-transform: uppercase; }
+.voucher-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: 260px; overflow-y: auto; }
+.voucher-list li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border: 1.5px dashed var(--line); border-radius: var(--radius-sm); }
+.voucher-list li.chosen { border-color: var(--orange); background: var(--orange-tint); }
+.voucher-list li > div { display: grid; gap: 2px; min-width: 0; }
+.voucher-list small { font-size: 12.5px; color: var(--muted); }
+.voucher-list .btn-outline { padding: 6px 12px; font-size: 13px; }
+.voucher-kind { font-weight: 700; text-transform: uppercase; letter-spacing: .04em; font-size: 11px !important; }
+.voucher-kind.k-PLATFORM { color: var(--orange-deep) !important; }
+.voucher-kind.k-RESTAURANT { color: var(--success) !important; }
+.discount-line span:last-child { color: var(--success); font-weight: 600; }
+.voucher-form { display: grid; gap: 12px; }
+.voucher-form .form-grid { align-items: end; }
+.progress { height: 6px; border-radius: 999px; background: var(--chip); overflow: hidden; min-width: 80px; }
+.progress i { display: block; height: 100%; background: var(--orange); }
+
+/* ================= Bản đồ ================= */
+.location-picker { display: grid; gap: 8px; }
+.location-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }
+.location-tools .btn-soft { padding: 9px 14px; font-size: 14px; }
+.location-search { position: relative; flex: 1; min-width: 200px; }
+.location-search input { width: 100%; }
+.location-suggestions { position: absolute; z-index: 1000; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none; background: var(--card); border-radius: var(--radius-sm); box-shadow: var(--shadow); max-height: 240px; overflow-y: auto; }
+.location-suggestions button { display: grid; width: 100%; text-align: left; padding: 8px 10px; border: 0; background: none; border-radius: 8px; font: inherit; color: inherit; cursor: pointer; }
+.location-suggestions button:hover { background: var(--orange-tint); }
+.location-suggestions small { color: var(--muted); font-size: 12px; }
+.location-map { border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--line); position: relative; z-index: 0; }
+.location-map.mini { pointer-events: none; }
+.location-hint { color: var(--muted); font-size: 12.5px; }
+.location-hint.warn { color: var(--orange-deep); font-weight: 600; }
+.shop-map { display: grid; gap: 8px; margin: 16px 0; }
+.route-line span:last-child { font-weight: 600; text-align: right; }
+.shop-distance { color: var(--orange-deep); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
@@ -1051,3 +1097,4 @@ fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; 
   .chip-a, .chip-b { font-size: 12px; }
   .track li { font-size: 11px; }
 }
+.map-loading { display: grid; place-items: center; color: var(--muted); font-size: 13px; background: var(--chip); }

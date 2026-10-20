@@ -24,6 +24,7 @@ const { ORDER_STATUSES } = require('../order/order.model');
 const { listAdminReviews, hideReview } = require('../review/review.controller');
 const { adminRouter: walletAdminRouter } = require('../wallet/wallet.routes');
 const { adminRouter: paymentAdminRouter } = require('../payment/payment.routes');
+const { adminRouter: voucherAdminRouter } = require('../voucher/voucher.routes');
 
 // Mount tại /api/admin — chỉ ADMIN
 const router = express.Router();
@@ -160,6 +161,8 @@ router.get(
 router.use(walletAdminRouter);
 // Trả trước (W2): hoàn tiền, giao dịch SePay
 router.use(paymentAdminRouter);
+// Voucher MAK (nền tảng chịu) + xem / tắt voucher của quán
+router.use('/vouchers', voucherAdminRouter);
 
 // ---- Audit log ----
 

@@ -73,7 +73,7 @@ backend/
 │   │   ├── admin/         ✅ duyệt/khóa quán, hoa hồng, audit log, người dùng, đơn (chỉ đọc), đánh giá
 │   │   ├── public.routes.js  ✅ /api/restaurants, /api/menu-items
 │   │   ├── order/         ✅ đặt đơn, tính tiền, state machine (orderStateMachine.js), khách + merchant routes
-│   │   ├── promotion/     ⬜ voucher của quán
+│   │   ├── voucher/       ✅ voucher MAK (admin) + voucher quán, áp vào đơn, trả lượt khi hủy (voucher.service.js)
 │   │   ├── review/        ⬜ đánh giá + trả lời
 │   │   ├── notification/  ✅ lưu thông báo + đẩy Socket.IO, chuông trên FE
 │   │   ├── report/        ✅ dashboard quán, thống kê admin (report.service.js)
@@ -208,7 +208,7 @@ Phân quyền **theo từng cửa hàng** (RBAC), lưu ở collection `storeStaf
 
 | # | Chức năng | Phạm vi | Trạng thái |
 |---|---|---|---|
-| E1 | Voucher của quán: % hoặc số tiền, đơn tối thiểu, giới hạn lượt, thời hạn | MVP | ⬜ |
+| E1 | Voucher MAK (admin tạo, nền tảng chịu) + voucher của quán (quán tạo, quán chịu): % hoặc số tiền, đơn tối thiểu, giới hạn lượt, lượt mỗi khách, thời hạn; 1 voucher mỗi loại / đơn | MVP | ✅ |
 | E2 | Combo, mua X tặng Y, flash sale | ⏭️ | ⬜ |
 | E3 | Chương trình chung của nền tảng, quảng cáo trả phí | ⏭️ | ⬜ |
 
@@ -296,6 +296,8 @@ Mã `BR-xx` được tham chiếu trong [database.md](database.md) và [API.md](
 
 ### Đơn hàng
 
+> **Rút gọn luồng xử lý (19/10/2026):** nhận đơn = bắt đầu làm; giao tận nơi: Đang làm → Đi giao → Đã giao (bỏ "món đã xong"); tự lấy: Đang làm → Món đã xong → Khách đã lấy. Quán hủy được tới trước khi đi giao. Các bước sau khi nhận đều hỏi lại trên giao diện. Chi tiết: `backend/src/modules/order/orderStateMachine.js`.
+
 | Mã | Quy tắc | |
 |---|---|---|
 | BR-30 | Một đơn chỉ chứa món của **một quán** (giỏ đổi quán thì phải xóa giỏ cũ). | ⬜ |
@@ -305,7 +307,7 @@ Mã `BR-xx` được tham chiếu trong [database.md](database.md) và [API.md](
 | BR-34 | Trừ tồn kho **nguyên tử**: chỉ trừ khi `soldToday + qty ≤ dailyLimit`; một món thất bại → hủy toàn bộ giao dịch đặt đơn. | ⬜ |
 | BR-35 | Vòng đời đơn (rút gọn từ docx vì quán tự giao) — xem sơ đồ và bảng bên dưới. | ⬜ |
 | BR-36 | Job chạy mỗi phút: đơn `PLACED` quá 5 phút → `CANCELLED` (actor = SYSTEM), hoàn lại tồn kho, báo khách và quán. | ✅ |
-| BR-37 | Đơn bị `REJECTED`/`CANCELLED` → hoàn lại `soldToday` và lượt dùng voucher. | ✅ suất · ⬜ voucher |
+| BR-37 | Đơn bị `REJECTED`/`CANCELLED` → hoàn lại `soldToday` và lượt dùng voucher. | ✅ |
 | BR-38 | Đặt đơn gửi header `Idempotency-Key`; gửi lại cùng key trong 24h trả về đúng đơn cũ, không tạo đơn mới. | ⬜ |
 | BR-39 | MVP chỉ thanh toán **COD**: `paymentStatus` = `UNPAID` → `PAID` khi đơn `COMPLETED`. | ✅ |
 
@@ -338,9 +340,11 @@ Mọi chuyển khác → lỗi `409 INVALID_STATUS_TRANSITION`. Mỗi lần chuy
 
 | Mã | Quy tắc | |
 |---|---|---|
-| BR-40 | Voucher thuộc 1 quán, mã duy nhất trong quán, có `startAt/endAt`, `minOrderAmount`, `usageLimit`, `perUserLimit`. | ⬜ |
-| BR-41 | Voucher `%` có `maxDiscount`; `discount ≤ subtotal` (tổng không âm). Mỗi đơn tối đa 1 voucher. | ⬜ |
-| BR-42 | Tăng `usedCount` nguyên tử khi đặt đơn (`usedCount < usageLimit`). | ⬜ |
+| BR-40 | Hai loại voucher: **MAK** (admin tạo, nền tảng chịu, áp mọi quán hoặc danh sách quán) và **của quán** (chủ quán tạo, quán chịu, chỉ quán đó). Mã duy nhất toàn hệ thống; có `startAt/endAt`, `minOrderAmount`, `usageLimit`, `perUserLimit` (mặc định 1), `paymentMethods` (tiền mặt / chuyển khoản / cả hai). | ✅ |
+| BR-41 | Voucher `%` có `maxDiscount`; tổng giảm ≤ tạm tính. Mỗi đơn tối đa **1 voucher quán + 1 voucher MAK**; voucher quán trừ trước, voucher MAK trừ trên phần còn lại. | ✅ |
+| BR-42 | Tăng `usedCount` nguyên tử khi đặt đơn (`usedCount < usageLimit`); giới hạn lượt mỗi khách chặn được cả khi đặt song song. | ✅ |
+| BR-43 | Hoa hồng tính trên `subtotal − restaurantDiscount`; voucher MAK không giảm hoa hồng và được nền tảng bù vào ví quán khi đơn hoàn thành. | ✅ |
+| BR-45 | Voucher đã có người dùng: không xóa, không đổi mã / mức giảm / điều kiện; chỉ gia hạn, đổi số lượt, bật / tắt. | ✅ |
 
 ### Tài chính
 
@@ -355,6 +359,17 @@ Mọi chuyển khác → lỗi `409 INVALID_STATUS_TRANSITION`. Mỗi lần chuy
 | BR-57 | Đơn trả trước chỉ tới quán khi webhook ngân hàng xác nhận đủ tiền (không tin client). Quá `PAYMENT_TIMEOUT_MINUTES` (15') chưa đủ tiền → tự hủy, hoàn suất. Mỗi giao dịch ngân hàng chỉ xử lý một lần. | ✅ |
 | BR-58 | Tiền khách đã trả mà đơn bị hủy / từ chối, hoặc chuyển thừa / thiếu / muộn / trùng → lệnh hoàn tiền; admin chuyển trả rồi xác nhận (kèm mã giao dịch). | ✅ |
 | BR-56 | Rút tiền: quán gửi yêu cầu (tối thiểu 50.000đ, ≤ số dư, mỗi lúc một yêu cầu); tiền bị giữ ngay, admin chuyển khoản rồi xác nhận hoặc từ chối (trả lại ví). | ✅ |
+
+### Bản đồ & quãng đường (20/10/2026)
+
+| Mã | Quy tắc | |
+|---|---|---|
+| BR-80 | Quán phải ghim vị trí mới được nộp hồ sơ duyệt; quán cũ chưa có vị trí thì tạm bỏ qua kiểm tra bán kính. | ✅ |
+| BR-81 | Đơn giao tận nơi bắt buộc có vị trí nơi nhận (ghim trên bản đồ / GPS / tìm địa chỉ); đơn tự lấy không cần. | ✅ |
+| BR-82 | Quãng đường theo đường đi thật (Goong, xe máy); lỗi / chưa có khóa → ước lượng đường chim bay × 1,3, ghi `source: ESTIMATE`. | ✅ |
+| BR-83 | Quãng đường > `deliveryRadiusKm` → không nhận đơn giao tận nơi (`OUT_OF_DELIVERY_RANGE`), gợi ý tự đến lấy. | ✅ |
+| BR-84 | Thời gian dự kiến = thời gian chuẩn bị + thời gian di chuyển, làm tròn lên 5 phút. | ✅ |
+| BR-85 | Vị trí nơi nhận chỉ khách đó, chủ quán của đơn và admin xem được; không có trong API công khai. | ✅ |
 
 ### Đánh giá
 
@@ -420,7 +435,7 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 | 3.1 | Tài khoản, hồ sơ, địa chỉ, đổi mật khẩu, chặn user bị khóa | 3.0 | API Auth/User xong + test | ✅ |
 | 3.2 | Quán: hồ sơ DRAFT→SUBMITTED, giờ mở cửa, bật/tắt nhận đơn, upload ảnh/giấy tờ; Admin duyệt/từ chối/khóa + audit log | 3.1 | Owner tạo quán → Admin duyệt → quán hiện ra | ✅ |
 | 3.3 | Menu: danh mục, món, biến thể, topping, hết hàng/giới hạn ngày; API public xem quán, menu, tìm món; seed demo | 3.2 | BE ✅ — FE `/menu` đọc từ API ✅ | ✅ |
-| 3.4 | Đặt đơn: tính giá phía server, trừ tồn kho nguyên tử, idempotency, voucher | 3.3 | FE checkout gọi API, bỏ `OrderContext` localStorage | 🟡 (voucher ⬜) |
+| 3.4 | Đặt đơn: tính giá phía server, trừ tồn kho nguyên tử, idempotency, voucher | 3.3 | FE checkout gọi API, bỏ `OrderContext` localStorage | ✅ |
 | 3.5 | Xử lý đơn: state machine, Socket.IO, job timeout 5 phút + reset suất 00:00, thông báo | 3.4 | Demo 2 trình duyệt: khách đặt → quán nhận realtime | ✅ |
 
 ### P4 — Vận hành (23/10 – 29/10)
@@ -455,7 +470,7 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 |---|---|---|
 | 1 | Owner đăng ký → tạo quán (DRAFT) → nộp hồ sơ → Admin duyệt → quán hiện ở trang khách. | ✅ BE (có test end-to-end) · ✅ FE |
 | 2 | Owner tạo danh mục, món có size + topping bắt buộc, đặt giới hạn 5 suất/ngày. | ✅ BE · ✅ FE |
-| 3 | Khách chọn món, chọn size/topping, áp voucher, đặt đơn COD. | 🟡 (đặt đơn COD ✅ + trả trước VietQR ✅, voucher ⬜) |
+| 3 | Khách chọn món, chọn size/topping, áp voucher, đặt đơn COD. | ✅ (+ trả trước VietQR) |
 | 4 | Trang quán **kêu chuông** và hiện đơn mới không cần F5; quán nhận → chuẩn bị → sẵn sàng → đang giao → hoàn thành; khách thấy trạng thái đổi realtime. | ✅ |
 | 5 | Đơn không được phản hồi 5 phút → tự hủy, tồn kho được hoàn. | ✅ |
 | 6 | Khách đánh giá, quán trả lời; dashboard quán hiện doanh thu đúng. | ✅ |
@@ -488,7 +503,7 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 | Phí giao hàng? | Quán tự cấu hình | ✅ **Miễn phí hoàn toàn cho khách** (06/10/2026) — bỏ `deliveryFee` khỏi hồ sơ quán; `orders.deliveryFee` luôn = 0 |
 | Mô hình hoa hồng? | Cố định 10%, lưu `commissionRate` trên từng quán (admin sửa được — đã code) | ✅ Tính trên tạm tính, trừ vào ví đối soát khi đơn hoàn thành (11/10/2026) |
 | Hình thức thanh toán, ai giữ tiền? | MVP chỉ COD, quán giữ tiền | ✅ **Ví đối soát nội bộ**, không làm ví điện tử thật (cần giấy phép NHNN) (11/10/2026). COD: quán giữ tiền, ví trừ hoa hồng; trả trước VietQR: tiền vào TK MAK, **SePay** tự xác nhận, đơn hoàn thành mới chia cho quán (11/10/2026) |
-| Voucher ai chịu? | — | ✅ **Nền tảng (admin) chịu** (11/10/2026) |
+| Voucher ai chịu? | — | ✅ **Nền tảng (admin) chịu** (11/10/2026); bổ sung 19/10: **quán được tự tạo voucher riêng, quán chịu**; mỗi đơn tối đa 1 voucher quán + 1 voucher MAK |
 | Trả tiền cho quán thế nào? | — | ✅ **Quán gửi yêu cầu rút**, admin chuyển khoản (11/10/2026) |
 | Quán nợ hoa hồng thì sao? | — | ✅ Âm tối đa 100.000đ / 3 ngày, quá thì tạm ngưng nhận đơn, nạp đủ tự mở (11/10/2026) |
 | Quy mô ban đầu? | ~10 quán, < 500 đơn/ngày → 1 server + Atlas free | |
@@ -527,6 +542,9 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 | 14 — API-9 (báo cáo + admin) | 09/10/2026 | `/api/merchant/reports/{summary,revenue,top-items}`, `/api/admin/reports/summary`, `/api/admin/users` (+ khóa / mở, khóa chủ quán → tắt nhận đơn), `/api/admin/orders`; khoảng ngày giờ VN, doanh thu chỉ đơn hoàn thành; FE: `/owner/dashboard`, `/admin/stats` (biểu đồ cột doanh thu + bảng), `/admin/users`, `/admin/orders`, trang Tài khoản (đổi mật khẩu) cho chủ quán / admin | 230 |
 | 15 — API-11 (ví đối soát) | 11/10/2026 | Module `wallet/`: sổ cái kép (`wallets`, `walletentries` chỉ ghi thêm), đơn COD hoàn thành trừ hoa hồng trong cùng transaction, voucher MAK chịu; nạp tiền (mã `NAP…`, ảnh VietQR, admin xác nhận), rút tiền (giữ tiền ngay, admin chuyển / từ chối), điều chỉnh tay có audit; tự khóa nhận đơn khi ví âm > 100k hoặc > 3 ngày (job `walletLock`), tự mở khi hết âm; FE `/owner/wallet`, `/admin/wallets`, banner tạm ngưng | 247 |
 | 16 — W2 (trả trước VietQR + SePay) | 11/10/2026 | Đơn `BANK_TRANSFER` → `PENDING_PAYMENT` (quán chưa thấy, giữ suất 15'), webhook `/api/payments/sepay/webhook` (API key, chống xử lý trùng) tự xác nhận → đơn tới quán; chuyển thừa / thiếu / muộn / trùng → lệnh hoàn; đơn đã trả bị hủy → hoàn tiền; mã `NAP…` tự xác nhận nạp ví quán; ví `ESCROW`, `REFUND_HOLD`; job `paymentTimeout`; `npm run sepay:simulate`; FE: chọn chuyển khoản ở checkout, trang quét mã `/orders/:id/pay` (đếm ngược, tự cập nhật), tab Hoàn tiền + Giao dịch ngân hàng ở `/admin/wallets` | 265 |
+| 17 — API-5b (voucher) | 19/10/2026 | Module `voucher/`: voucher MAK (admin, nền tảng chịu, giới hạn quán) + voucher quán (chủ quán, quán chịu); `voucherCodes` ở preview / đặt đơn (1 mỗi loại), quán trừ trước, MAK trừ sau; hoa hồng trên phần quán thực bán; giữ lượt nguyên tử + giới hạn mỗi khách (`voucherredemptions`, slot unique), trả lượt khi hủy; ví chỉ bù phần MAK; doanh thu quán = total + phần MAK bù; FE: ô mã + danh sách voucher ở checkout, dòng giảm giá trong đơn, `/owner/vouchers`, `/admin/vouchers` | 277 |
+| 18 — Rút gọn luồng xử lý đơn + giờ mở cửa | 19/10/2026 | Nhận đơn → thẳng `PREPARING`; giao tận nơi bỏ `READY` (Đang làm → Đi giao → Đã giao), tự lấy giữ `READY`; quán hủy được tới trước khi đi giao; hỏi lại trước các bước không quay lại được; đơn cũ không bị kẹt. Giờ mở cửa: ghi cách đọc 24h dưới mỗi ô, cảnh báo đóng từ trưa (nhầm SA/CH), nút "Cả ngày"; khách thấy lý do quán đóng + giờ mở lại (RISKS R6) | 280 |
+| 19 — Bản đồ & quãng đường (bản tối giản) | 20/10/2026 | Module `routing/` (Goong Direction / AutoComplete / Geocode qua backend, ước lượng × 1,3 khi chưa có khóa / lỗi, bộ nhớ đệm 7 ngày), `/api/geo/*`; bắt buộc vị trí nơi nhận, chặn ngoài bán kính, lưu `route` + `estimatedDeliveryMinutes` vào đơn; nộp hồ sơ quán cần vị trí; khoảng cách trên danh sách quán. FE: `LocationPicker` (Leaflet + OSM, GPS, tìm địa chỉ, kéo ghim — tải lười), gắn vào Hồ sơ quán / Sổ địa chỉ / Thanh toán; bản đồ nhỏ + chỉ đường ở trang quán; chỉ đường tới khách ở đơn của chủ quán | 295 |
 
 **Lệnh hay dùng (trong `backend/`):**
 

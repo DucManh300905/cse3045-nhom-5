@@ -82,7 +82,11 @@ const customerMessage = (order) => {
                 body: order.estimatedReadyAt ? `Dự kiến món xong lúc ${clock(order.estimatedReadyAt)}` : undefined
             };
         case 'PREPARING':
-            return { title: `Đơn ${order.code} đang được chuẩn bị`, body: shop };
+            // Nhận đơn = bắt đầu làm luôn (19/10/2026)
+            return {
+                title: `${shop} đã nhận đơn ${order.code}`,
+                body: order.estimatedReadyAt ? `Đang chuẩn bị · dự kiến xong lúc ${clock(order.estimatedReadyAt)}` : 'Đang chuẩn bị'
+            };
         case 'READY':
             return {
                 title: pickup ? `Món của đơn ${order.code} đã xong` : `Đơn ${order.code} đã xong, quán sắp giao`,
@@ -93,7 +97,7 @@ const customerMessage = (order) => {
         case 'COMPLETED':
             // Mời đánh giá quán (API-8): bấm vào mở thẳng phần đánh giá
             return {
-                title: `Đơn ${order.code} đã hoàn thành`,
+                title: pickup ? `Đơn ${order.code} đã hoàn thành` : `Đơn ${order.code} đã được giao`,
                 body: `Cảm ơn bạn đã đặt món tại ${shop}. Bấm để đánh giá quán`,
                 link: order.restaurantSnapshot?.slug ? `/restaurants/${order.restaurantSnapshot.slug}#reviews` : '/orders'
             };

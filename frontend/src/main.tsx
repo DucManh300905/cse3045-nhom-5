@@ -10,7 +10,8 @@ import './styles.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
+    {/* Bật sớm hành vi của React Router v7 (tắt cảnh báo "Future Flag" trong Console) */}
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ToastProvider>
         <AuthProvider>
           <SocketProvider>

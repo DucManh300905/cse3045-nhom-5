@@ -16,6 +16,7 @@ const as = (token) => ({
     get: (url) => request(app).get(url).set('Authorization', `Bearer ${token}`),
     patch: (url, body = {}) => request(app).patch(url).set('Authorization', `Bearer ${token}`).send(body),
     put: (url, body = {}) => request(app).put(url).set('Authorization', `Bearer ${token}`).send(body),
+    delete: (url) => request(app).delete(url).set('Authorization', `Bearer ${token}`),
     post: (url, body = {}, key) => {
         const req = request(app).post(url).set('Authorization', `Bearer ${token}`);
         return (key ? req.set('Idempotency-Key', key) : req).send(body);
@@ -39,6 +40,9 @@ const createShop = async ({ name = 'Quán Test', ...overrides } = {}) => {
         openingHours: allDay,
         minOrderAmount: 20000,
         commissionRate: 0.1,
+        // Quán ở khu Hòa Lạc, giao trong 5 km (BR-80..83)
+        location: { type: 'Point', coordinates: [105.5254, 21.0136] },
+        deliveryRadiusKm: 5,
         ...overrides
     });
     const category = await MenuCategory.create({ restaurant: restaurant._id, name: 'Món' });
@@ -87,7 +91,8 @@ const teaLine = (tea, { size = 'L', toppings = ['Trân châu'], sugar = '50%', q
     qty
 });
 
-const delivery = { receiverName: 'Khách A', phone: '0987654321', addressLine: 'KTX ĐH Việt Nhật' };
+// Nơi nhận cách quán ~1 km đường chim bay
+const delivery = { receiverName: 'Khách A', phone: '0987654321', addressLine: 'KTX ĐH Việt Nhật', lat: 21.0060, lng: 105.5200 };
 
 // Đặt nhanh 1 đơn cơm gà (mặc định giao tận nơi)
 const placeOrder = async (customer, shop, { qty = 1, fulfillmentType = 'DELIVERY' } = {}) => {

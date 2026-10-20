@@ -80,8 +80,15 @@ const CODE_MESSAGES: Record<string, string> = {
   ITEM_OUT_OF_STOCK: 'Món đã hết suất.',
   VOUCHER_INVALID: 'Mã giảm giá không hợp lệ.',
   VOUCHER_EXHAUSTED: 'Mã giảm giá đã hết lượt.',
+  VOUCHER_USER_LIMIT: 'Bạn đã dùng hết lượt của mã giảm giá này.',
+  VOUCHER_STACK_LIMIT: 'Mỗi đơn chỉ dùng tối đa 1 voucher quán và 1 voucher MAK.',
+  VOUCHER_IN_USE: 'Voucher đã có người dùng: không đổi được mức giảm và không xóa được — hãy tắt voucher.',
   IDEMPOTENCY_KEY_REQUIRED: 'Thiếu mã chống đặt trùng, vui lòng thử lại.',
   PAYMENT_METHOD_UNAVAILABLE: 'Hiện chưa nhận thanh toán chuyển khoản, vui lòng chọn tiền mặt.',
+  LOCATION_REQUIRED: 'Vui lòng ghim vị trí nhận hàng trên bản đồ.',
+  OUT_OF_DELIVERY_RANGE: 'Nơi nhận ở ngoài phạm vi giao hàng của quán — hãy chọn "Tự đến lấy".',
+  GEO_UNAVAILABLE: 'Chưa bật tìm địa chỉ bằng chữ — hãy bấm lên bản đồ để ghim.',
+  GEO_FAILED: 'Dịch vụ bản đồ đang lỗi, thử lại sau hoặc ghim tay trên bản đồ.',
   WALLET_LOCKED: 'Quán đang tạm ngưng vì ví âm. Nạp tiền ở trang Ví để mở lại.',
   BANK_ACCOUNT_REQUIRED: 'Hãy lưu tài khoản ngân hàng nhận tiền trước khi rút.',
   INSUFFICIENT_BALANCE: 'Số dư ví không đủ.',
@@ -117,6 +124,13 @@ const MESSAGES: Record<string, string> = {
   'Access denied': 'Bạn không có quyền thực hiện thao tác này.',
   'Restaurant is not accepting orders right now': 'Quán hiện không nhận đơn (ngoài giờ mở cửa hoặc tạm nghỉ).',
   'accountNumber must be 6-20 digits': 'Số tài khoản gồm 6–20 chữ số.',
+  'Voucher code already exists': 'Mã voucher đã tồn tại, hãy chọn mã khác.',
+  'code must be 4-20 letters or digits': 'Mã voucher gồm 4–20 chữ cái hoặc chữ số, không dấu, không khoảng trắng.',
+  'maxDiscount is required for percent vouchers': 'Voucher giảm theo % cần nhập mức giảm tối đa.',
+  'Percent value must be between 1 and 100': 'Phần trăm giảm phải từ 1 đến 100.',
+  'endAt must be after startAt': 'Thời gian kết thúc phải sau thời gian bắt đầu.',
+  'usageLimit cannot be lower than the number of uses': 'Tổng lượt không được nhỏ hơn số lượt đã dùng.',
+  'Restaurant location is required': 'Cần ghim vị trí quán trên bản đồ (ở phần Thông tin quán) trước khi nộp hồ sơ.',
   'Address not found': 'Không tìm thấy địa chỉ trong sổ, vui lòng chọn lại.',
   'Category name already exists': 'Tên danh mục đã tồn tại.',
   'Opening hours overlap in the same day': 'Các khung giờ trong cùng một ngày bị chồng nhau.',
@@ -130,6 +144,10 @@ export function getErrorMessage(err: unknown): string {
   }
   return err instanceof Error ? err.message : 'Đã có lỗi xảy ra.';
 }
+
+/** Chi tiết lỗi đầu tiên (vd lý do voucher không áp được) */
+export const getErrorDetail = (err: unknown): Record<string, unknown> | undefined =>
+  axios.isAxiosError(err) ? ((err.response?.data as ApiError | undefined)?.errors?.[0] as Record<string, unknown> | undefined) : undefined;
 
 /** Mã lỗi máy đọc được của response (nếu có) */
 export const getErrorCode = (err: unknown): string | undefined =>
