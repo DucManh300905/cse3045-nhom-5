@@ -13,15 +13,21 @@ const PAGE_SIZE = 10;
 /** API giới hạn limit tối đa 100 */
 const MAX_LIMIT = 100;
 
-// Các bước của đơn (BR-35); đơn tự lấy không có bước "Đang giao"
-const flowOf = (o: Order): { label: string; statuses: OrderStatus[] }[] => [
-  ...(o.paymentMethod === 'BANK_TRANSFER' ? [{ label: 'Chờ thanh toán', statuses: ['PENDING_PAYMENT'] as OrderStatus[] }] : []),
-  { label: 'Chờ quán nhận', statuses: ['PLACED'] },
-  { label: 'Đang chuẩn bị', statuses: ['ACCEPTED', 'PREPARING'] },
-  { label: o.fulfillmentType === 'PICKUP' ? 'Sẵn sàng, mời lấy' : 'Sẵn sàng', statuses: ['READY'] },
-  ...(o.fulfillmentType === 'DELIVERY' ? [{ label: 'Đang giao', statuses: ['DELIVERING'] as OrderStatus[] }] : []),
-  { label: 'Hoàn thành', statuses: ['COMPLETED'] },
-];
+// Các bước của đơn (BR-35, rút gọn 19/10/2026)
+// Giao tận nơi: Chờ quán nhận → Đang làm → Đang giao → Đã giao · Tự lấy: Chờ quán nhận → Đang làm → Mời bạn đến lấy → Đã lấy
+const flowOf = (o: Order): { label: string; statuses: OrderStatus[] }[] => {
+  const pickup = o.fulfillmentType === 'PICKUP';
+  return [
+    ...(o.paymentMethod === 'BANK_TRANSFER' ? [{ label: 'Chờ thanh toán', statuses: ['PENDING_PAYMENT'] as OrderStatus[] }] : []),
+    { label: 'Chờ quán nhận', statuses: ['PLACED'] },
+    // READY của đơn giao tận nơi (đơn cũ) vẫn tính là "đang làm"
+    { label: 'Đang làm', statuses: pickup ? ['ACCEPTED', 'PREPARING'] : ['ACCEPTED', 'PREPARING', 'READY'] },
+    pickup
+      ? { label: 'Mời bạn đến lấy', statuses: ['READY'] as OrderStatus[] }
+      : { label: 'Đang giao', statuses: ['DELIVERING'] as OrderStatus[] },
+    { label: pickup ? 'Đã lấy' : 'Đã giao', statuses: ['COMPLETED'] },
+  ];
+};
 
 const ENDED: Partial<Record<OrderStatus, string>> = {
   REJECTED: 'Quán đã từ chối đơn',
@@ -31,10 +37,10 @@ const ENDED: Partial<Record<OrderStatus, string>> = {
 const STATUS_NOTICE: Record<string, string> = {
   PLACED: 'đã nhận thanh toán, chờ quán nhận',
   ACCEPTED: 'quán đã nhận đơn',
-  PREPARING: 'quán đang làm món',
-  READY: 'món đã xong',
+  PREPARING: 'quán đã nhận đơn và đang làm',
+  READY: 'món đã xong, mời bạn đến lấy',
   DELIVERING: 'đang giao đến bạn',
-  COMPLETED: 'hoàn thành. Chúc ngon miệng!',
+  COMPLETED: 'đã hoàn thành. Chúc ngon miệng!',
   REJECTED: 'quán đã từ chối đơn',
   CANCELLED: 'đơn đã bị hủy',
 };
@@ -201,6 +207,12 @@ export default function OrdersPage() {
                       {o.fulfillmentType === 'DELIVERY' && (
                         <li className="order-fee"><span>Phí giao hàng</span><span>Miễn phí</span></li>
                       )}
+                      {o.vouchers?.map(v => (
+                        <li key={v.code} className="order-fee discount-line">
+                          <span>{v.fundedBy === 'PLATFORM' ? 'Voucher MAK' : 'Voucher quán'} <b className="mono">{v.code}</b></span>
+                          <span>−{formatPrice(v.discount)}</span>
+                        </li>
+                      ))}
                     </ul>
 
                     <div className="order-foot">

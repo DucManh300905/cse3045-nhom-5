@@ -7,6 +7,22 @@ export interface Address {
   phone: string;
   addressLine: string;
   isDefault: boolean;
+  /** Vị trí đã ghim (bắt buộc để đặt giao tận nơi — BR-81) */
+  location?: GeoPoint;
+}
+
+/** GeoJSON: coordinates = [lng, lat] */
+export interface GeoPoint {
+  type: 'Point';
+  coordinates: [number, number];
+}
+
+/** Tuyến quán -> nơi nhận: đường đi thật (ROUTING) hoặc ước lượng (ESTIMATE) */
+export interface DeliveryRoute {
+  distanceKm: number;
+  durationMinutes: number;
+  source: 'ROUTING' | 'ESTIMATE';
+  provider?: string;
 }
 
 export interface User {
@@ -56,6 +72,9 @@ export interface Restaurant extends RestaurantSummary {
   openingHours: OpeningHour[];
   minOrderAmount: number;
   deliveryRadiusKm?: number;
+  location?: GeoPoint;
+  /** Khoảng cách ước lượng tới người xem (khi gửi lat/lng) */
+  distanceKm?: number;
   avgPrepMinutes?: number;
   ratingAvg: number;
   ratingCount: number;
@@ -179,12 +198,18 @@ export interface Order {
   restaurantSnapshot: { name: string; slug?: string; phone?: string; address?: string };
   items: OrderLine[];
   fulfillmentType: FulfillmentType;
-  delivery?: { receiverName: string; phone: string; addressLine: string; note?: string };
+  delivery?: { receiverName: string; phone: string; addressLine: string; note?: string; location?: GeoPoint };
+  route?: DeliveryRoute;
+  estimatedDeliveryMinutes?: number;
   subtotal: number;
   /** Luôn 0 — miễn phí giao hàng */
   deliveryFee: number;
   discount: number;
   total: number;
+  /** Tổng giảm = restaurantDiscount (quán chịu) + platformDiscount (MAK chịu) */
+  restaurantDiscount?: number;
+  platformDiscount?: number;
+  vouchers?: OrderVoucher[];
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
   /** Trả trước: nội dung chuyển khoản + hạn thanh toán */
@@ -233,7 +258,84 @@ export interface OrderPreview {
   subtotal: number;
   deliveryFee: number;
   discount: number;
+  restaurantDiscount: number;
+  platformDiscount: number;
+  vouchers: (Omit<OrderVoucher, 'voucher'> & { id: string })[];
+  /** null: chưa ghim nơi nhận / quán chưa có vị trí / tự đến lấy */
+  route: DeliveryRoute | null;
+  estimatedDeliveryMinutes: number | null;
   total: number;
+}
+
+// ================= Voucher (docs/API.md mục 2.12) =================
+
+export type VoucherFundedBy = 'PLATFORM' | 'RESTAURANT';
+export type VoucherType = 'PERCENT' | 'FIXED';
+
+/** Voucher đã áp vào đơn (snapshot) */
+export interface OrderVoucher {
+  voucher: string;
+  code: string;
+  fundedBy: VoucherFundedBy;
+  type: VoucherType;
+  value: number;
+  discount: number;
+}
+
+/** GET /vouchers/available — voucher khách còn dùng được ở quán */
+export interface PublicVoucher {
+  id: string;
+  code: string;
+  description?: string;
+  fundedBy: VoucherFundedBy;
+  type: VoucherType;
+  value: number;
+  maxDiscount: number | null;
+  minOrderAmount: number;
+  /** Chỉ áp dụng khi khách chọn các phương thức này */
+  paymentMethods: PaymentMethod[];
+  startAt: string;
+  endAt: string;
+  /** null = không giới hạn */
+  remaining: number | null;
+}
+
+/** Voucher trong trang quản lý (chủ quán / admin) */
+export interface ManagedVoucher extends Omit<PublicVoucher, 'remaining'> {
+  restaurant?: { id: string; name: string; slug?: string } | null;
+  restaurants: { id: string; name: string; slug?: string }[];
+  usageLimit: number | null;
+  usedCount: number;
+  perUserLimit: number;
+  isActive: boolean;
+  status: 'ACTIVE' | 'INACTIVE' | 'EXPIRED' | 'SCHEDULED';
+  createdAt: string;
+}
+
+export interface VoucherInput {
+  code?: string;
+  description?: string;
+  type?: VoucherType;
+  value?: number;
+  maxDiscount?: number | null;
+  minOrderAmount?: number;
+  paymentMethods?: PaymentMethod[];
+  usageLimit?: number | null;
+  perUserLimit?: number;
+  startAt?: string;
+  endAt?: string;
+  isActive?: boolean;
+  /** Admin: rỗng = mọi quán */
+  restaurants?: string[];
+}
+
+export interface VoucherUsage {
+  id: string;
+  order: { id: string; code: string; status: OrderStatus; total: number; placedAt?: string | null; createdAt: string } | null;
+  customer: string;
+  discount: number;
+  active: boolean;
+  createdAt: string;
 }
 
 // ================= Chủ quán (/merchant/*, docs/API.md mục 2.5) =================

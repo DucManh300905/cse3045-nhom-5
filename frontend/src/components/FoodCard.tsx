@@ -46,7 +46,7 @@ export default function FoodCard({ item, restaurant, onChoose, showShop = true }
           {item.prepMinutes && <span>{item.prepMinutes} phút</span>}
           {soldOut ? <span>Hết suất</span> : remaining !== null && <span className={lowStock ? 'warn' : ''}>Còn {remaining} suất</span>}
           {custom && <span>Có tùy chọn</span>}
-          {closed && <span className="warn">Quán đang đóng</span>}
+          {closed && <span className="warn">{restaurant.isOpenNow ? 'Quán tạm ngưng nhận đơn' : 'Ngoài giờ mở cửa'}</span>}
         </div>
 
         <div className="dish-action">

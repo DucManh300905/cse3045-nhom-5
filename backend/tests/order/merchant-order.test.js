@@ -22,17 +22,20 @@ beforeEach(async () => {
 const soldToday = async () => (await MenuItem.findById(shop.rice._id)).soldToday;
 
 describe('Luồng chuẩn (BR-35, quán tự giao)', () => {
-    test('giao tận nơi: PLACED → ACCEPTED → PREPARING → READY → DELIVERING → COMPLETED (đã thu tiền)', async () => {
+    test('giao tận nơi: nhận đơn (= đang làm) → đi giao → đã giao (đã thu tiền)', async () => {
         const order = await placeOrder(customer, shop);
 
         const accepted = await owner.post(`${M}/${order.id}/accept`);
         expect(accepted.status).toBe(200);
-        expect(accepted.body.data).toMatchObject({ status: 'ACCEPTED', nextStatus: 'PREPARING', customer: { fullName: expect.any(String) } });
+        expect(accepted.body.data).toMatchObject({ status: 'PREPARING', nextStatus: 'DELIVERING', customer: { fullName: expect.any(String) } });
         // avgPrepMinutes mặc định 15 phút
         const eta = new Date(accepted.body.data.estimatedReadyAt) - new Date(accepted.body.data.acceptedAt);
         expect(Math.round(eta / 60000)).toBe(15);
 
-        for (const [to, next] of [['PREPARING', 'READY'], ['READY', 'DELIVERING'], ['DELIVERING', 'COMPLETED'], ['COMPLETED', null]]) {
+        // Đơn giao tận nơi không còn bước "món đã xong"
+        expect((await owner.post(`${M}/${order.id}/status`, { to: 'READY' })).status).toBe(409);
+
+        for (const [to, next] of [['DELIVERING', 'COMPLETED'], ['COMPLETED', null]]) {
             const res = await owner.post(`${M}/${order.id}/status`, { to });
             expect(res.status).toBe(200);
             expect(res.body.data).toMatchObject({ status: to, nextStatus: next });
@@ -45,16 +48,17 @@ describe('Luồng chuẩn (BR-35, quán tự giao)', () => {
             '>PLACED:CUSTOMER',
             'PLACED>ACCEPTED:OWNER',
             'ACCEPTED>PREPARING:OWNER',
-            'PREPARING>READY:OWNER',
-            'READY>DELIVERING:OWNER',
+            'PREPARING>DELIVERING:OWNER',
             'DELIVERING>COMPLETED:OWNER'
         ]);
     });
 
-    test('tự đến lấy: READY → COMPLETED, không có bước DELIVERING', async () => {
+    test('tự đến lấy: nhận đơn → món đã xong (READY) → khách đã lấy; không có bước đi giao', async () => {
         const order = await placeOrder(customer, shop, { fulfillmentType: 'PICKUP' });
-        await owner.post(`${M}/${order.id}/accept`).expect(200);
-        await owner.post(`${M}/${order.id}/status`, { to: 'PREPARING' }).expect(200);
+        const accepted = await owner.post(`${M}/${order.id}/accept`).expect(200);
+        expect(accepted.body.data).toMatchObject({ status: 'PREPARING', nextStatus: 'READY' });
+
+        expect((await owner.post(`${M}/${order.id}/status`, { to: 'DELIVERING' })).status).toBe(409);
         const ready = await owner.post(`${M}/${order.id}/status`, { to: 'READY' });
         expect(ready.body.data.nextStatus).toBe('COMPLETED');
 
@@ -62,10 +66,21 @@ describe('Luồng chuẩn (BR-35, quán tự giao)', () => {
         expect((await owner.post(`${M}/${order.id}/status`, { to: 'COMPLETED' })).body.data.status).toBe('COMPLETED');
     });
 
+    test('đơn cũ đang dở (ACCEPTED / READY của đơn giao tận nơi) vẫn đi tiếp được', async () => {
+        const a = await placeOrder(customer, shop);
+        await Order.updateOne({ _id: a.id }, { status: 'ACCEPTED' });
+        expect((await owner.post(`${M}/${a.id}/status`, { to: 'PREPARING' })).body.data.nextStatus).toBe('DELIVERING');
+
+        const b = await placeOrder(customer, shop);
+        await Order.updateOne({ _id: b.id }, { status: 'READY' });
+        expect((await owner.post(`${M}/${b.id}/status`, { to: 'DELIVERING' })).status).toBe(200);
+    });
+
     test.each([
         ['PLACED', 'PREPARING', 'phải nhận đơn trước'],
         ['ACCEPTED', 'READY', 'không được bỏ bước'],
         ['PREPARING', 'COMPLETED', 'không được bỏ bước'],
+        ['PREPARING', 'READY', 'đơn giao tận nơi không có bước món đã xong'],
         ['READY', 'COMPLETED', 'đơn giao tận nơi phải qua DELIVERING'],
         ['COMPLETED', 'DELIVERING', 'đơn đã xong'],
         ['CANCELLED', 'PREPARING', 'đơn đã hủy']
@@ -115,18 +130,22 @@ describe('Từ chối / hủy (hoàn suất — BR-37)', () => {
         expect(seen.body.data).toMatchObject({ status: 'REJECTED', cancelReason: { code: 'OUT_OF_STOCK' } });
     });
 
-    test('quán hủy chỉ được với đơn đã nhận (ACCEPTED), hoàn suất', async () => {
+    test('quán hủy được khi đã nhận / đang làm (hoàn suất); chưa nhận hoặc đã đi giao -> 409', async () => {
         const order = await placeOrder(customer, shop, { qty: 2 });
 
+        // Chưa nhận: phải dùng "Từ chối"
         expect((await owner.post(`${M}/${order.id}/cancel`, { reasonCode: 'OVERLOADED' })).status).toBe(409);
 
-        await owner.post(`${M}/${order.id}/accept`).expect(200);
+        await owner.post(`${M}/${order.id}/accept`).expect(200); // -> PREPARING
         const res = await owner.post(`${M}/${order.id}/cancel`, { reasonCode: 'OVERLOADED' });
         expect(res.body.data.status).toBe('CANCELLED');
+        expect(res.body.data.statusHistory.at(-1)).toMatchObject({ from: 'PREPARING', to: 'CANCELLED' });
         expect(await soldToday()).toBe(0);
 
-        await Order.updateOne({ _id: order.id }, { status: 'PREPARING' });
-        expect((await owner.post(`${M}/${order.id}/cancel`, { reasonCode: 'OTHER' })).status).toBe(409);
+        const delivering = await placeOrder(customer, shop);
+        await owner.post(`${M}/${delivering.id}/accept`).expect(200);
+        await owner.post(`${M}/${delivering.id}/status`, { to: 'DELIVERING' }).expect(200);
+        expect((await owner.post(`${M}/${delivering.id}/cancel`, { reasonCode: 'OTHER' })).status).toBe(409);
     });
 });
 
@@ -147,7 +166,7 @@ describe('GET /merchant/orders', () => {
         const placed = await owner.get(`${M}?status=PLACED`);
         expect(placed.body.data.items.map((o) => o.id)).toEqual([first.id, second.id]);
 
-        const active = await owner.get(`${M}?status=PLACED,ACCEPTED`);
+        const active = await owner.get(`${M}?status=PLACED,PREPARING`);
         expect(active.body.data.total).toBe(3);
 
         expect((await owner.get(`${M}?status=NOPE`)).status).toBe(400);
@@ -184,7 +203,7 @@ describe('Job', () => {
         const cancelled = await Order.findById(old.id);
         expect(cancelled).toMatchObject({ status: 'CANCELLED', cancelReason: { code: 'TIMEOUT' } });
         expect(cancelled.statusHistory.at(-1)).toMatchObject({ from: 'PLACED', to: 'CANCELLED', actorType: 'SYSTEM' });
-        expect((await Order.findById(oldAccepted.id)).status).toBe('ACCEPTED');
+        expect((await Order.findById(oldAccepted.id)).status).toBe('PREPARING');
         expect((await Order.findById(fresh.id)).status).toBe('PLACED');
         expect(await soldToday()).toBe(2);
 

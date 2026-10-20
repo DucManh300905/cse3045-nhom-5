@@ -76,7 +76,7 @@ const balanceOf = async (key) => (await Wallet.findOne({ key }))?.balance ?? 0;
 const totalBalance = async () => (await Wallet.find()).reduce((s, w) => s + w.balance, 0);
 const advance = async (orderId) => {
     await owner.post(`${M}/${orderId}/accept`).expect(200);
-    for (const to of ['PREPARING', 'READY', 'COMPLETED']) {
+    for (const to of ['READY', 'COMPLETED']) {
         await owner.post(`${M}/${orderId}/status`, { to }).expect(200);
     }
 };

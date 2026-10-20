@@ -248,7 +248,8 @@ const syncAllWalletLocks = async (now = new Date()) => {
  */
 const settleOrder = async (order, session) => {
     const commission = order.commissionAmount || 0;
-    const voucher = order.discount || 0;
+    // Chỉ voucher MAK do nền tảng bù; voucher quán do quán tự chịu (đã trừ vào tiền khách trả)
+    const voucher = order.platformDiscount || 0;
     const parts = [`hoa hồng ${money(commission)}`];
     if (voucher) {
         parts.push(`MAK bù voucher ${money(voucher)}`);

@@ -13,6 +13,9 @@ import { useCart } from '../context/CartContext';
 import { useToast } from '../context/ToastContext';
 import type { MenuCategory, MenuItem, Restaurant } from '../types';
 import { formatPrice } from '../utils/format';
+import { closedReason } from '../utils/openingHours';
+import { MiniMap } from '../components/LazyMap';
+import { directionsUrl, fromPoint } from '../utils/geo';
 
 const DAYS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
@@ -92,7 +95,7 @@ export default function RestaurantPage() {
                 {restaurant.logoUrl && <img className="shop-logo" src={assetUrl(restaurant.logoUrl)} alt="" />}
                 <div>
                   <span className={restaurant.canAcceptOrders ? 'open-badge' : 'open-badge closed'}>
-                    <i /> {restaurant.canAcceptOrders ? 'Đang nhận đơn' : 'Tạm ngưng nhận đơn'}
+                    <i /> {closedReason(restaurant)?.full ?? 'Đang nhận đơn'}
                   </span>
                   <h1>{restaurant.name}</h1>
                   {restaurant.description && <p>{restaurant.description}</p>}
@@ -103,6 +106,7 @@ export default function RestaurantPage() {
             <ul className="shop-facts">
               <li><small>Địa chỉ</small><b>{restaurant.address}</b></li>
               <li><small>Giờ mở cửa</small><b>{todayHours(restaurant)}</b></li>
+              {restaurant.deliveryRadiusKm !== undefined && <li><small>Phạm vi giao</small><b>Trong {restaurant.deliveryRadiusKm} km</b></li>}
               <li><small>Giao hàng</small><b>Quán tự giao · Miễn phí</b></li>
               <li><small>Đơn tối thiểu</small><b>{restaurant.minOrderAmount ? formatPrice(restaurant.minOrderAmount) : 'Không'}</b></li>
               <li>
@@ -110,6 +114,13 @@ export default function RestaurantPage() {
                 <a href="#reviews" className="fact-link"><RatingBadge avg={restaurant.ratingAvg} count={restaurant.ratingCount} /></a>
               </li>
             </ul>
+
+            {fromPoint(restaurant.location) && (
+              <section className="shop-map">
+                <MiniMap point={fromPoint(restaurant.location)!} />
+                <a className="btn-outline" href={directionsUrl(fromPoint(restaurant.location)!)} target="_blank" rel="noreferrer">🧭 Chỉ đường tới quán</a>
+              </section>
+            )}
 
             {categories.length === 0 ? (
               <div className="empty-state">

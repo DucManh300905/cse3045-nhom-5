@@ -1,10 +1,12 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { getErrorMessage } from '../api/client';
 import { usersApi, type AddressInput } from '../api/users';
 import AppHeader from '../components/AppHeader';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import type { Address } from '../types';
+import { LocationPicker } from '../components/LazyMap';
+import { fromPoint, type LatLng } from '../utils/geo';
 import { PHONE_REGEX } from '../utils/format';
 
 const MAX_ADDRESSES = 5;
@@ -135,17 +137,21 @@ function AddressBook() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const setField = <K extends keyof AddressInput>(k: K, v: AddressInput[K]) => setForm(f => ({ ...f, [k]: v }));
+  const [pin, setPin] = useState<LatLng | null>(null);
+  const fillAddress = useCallback((a: string) => setForm(f => (f.addressLine.trim() ? f : { ...f, addressLine: a })), []);
 
   const reload = () => usersApi.listAddresses().then(setAddresses).catch(err => { setAddresses([]); setError(getErrorMessage(err)); });
   useEffect(() => { reload(); }, []);
 
   const openNew = () => {
     setForm({ ...EMPTY_ADDRESS, receiverName: user?.fullName ?? '', phone: user?.phone ?? '', isDefault: !addresses?.length });
+    setPin(null);
     setEditing('new');
     setError('');
   };
   const openEdit = (a: Address) => {
     setForm({ label: a.label ?? '', receiverName: a.receiverName, phone: a.phone, addressLine: a.addressLine, isDefault: a.isDefault });
+    setPin(fromPoint(a.location));
     setEditing(a.id);
     setError('');
   };
@@ -155,7 +161,10 @@ function AddressBook() {
     if (!form.receiverName.trim()) return setError('Vui lòng nhập tên người nhận.');
     if (!PHONE_REGEX.test(form.phone)) return setError('Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0.');
     if (form.addressLine.trim().length < 5) return setError('Vui lòng nhập địa chỉ cụ thể.');
+    if (!pin) return setError('Vui lòng ghim vị trí trên bản đồ (cần để giao tận nơi).');
     const body: AddressInput = {
+      lat: pin.lat,
+      lng: pin.lng,
       label: form.label?.trim() || undefined,
       receiverName: form.receiverName.trim(),
       phone: form.phone,
@@ -223,6 +232,7 @@ function AddressBook() {
                 <b>{a.label || a.receiverName}{a.isDefault && <em className="tag">Mặc định</em>}</b>
                 <small>{a.receiverName} · {a.phone}</small>
                 <small>{a.addressLine}</small>
+                {!a.location && <small className="warn-line">Chưa ghim vị trí — bấm "Sửa" để ghim trên bản đồ</small>}
               </div>
               <div className="address-actions">
                 {!a.isDefault && <button className="link-btn" onClick={() => makeDefault(a)}>Đặt mặc định</button>}
@@ -255,6 +265,10 @@ function AddressBook() {
             <span>Địa chỉ *</span>
             <textarea rows={2} value={form.addressLine} onChange={e => setField('addressLine', e.target.value)} placeholder="vd: Phòng 305, KTX Đại học Việt Nhật, Khu CNC Hòa Lạc" maxLength={255} />
           </label>
+          <div className="field">
+            <span>Vị trí trên bản đồ *</span>
+            <LocationPicker value={pin} onChange={setPin} onAddress={fillAddress} />
+          </div>
           <label className="check-row">
             <input
               type="checkbox"

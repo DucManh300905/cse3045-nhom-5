@@ -13,6 +13,8 @@ export interface AddressInput {
   phone: string;
   addressLine: string;
   isDefault?: boolean;
+  lat?: number;
+  lng?: number;
 }
 
 export const usersApi = {

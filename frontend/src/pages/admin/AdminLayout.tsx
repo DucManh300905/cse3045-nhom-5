@@ -21,6 +21,7 @@ export default function AdminLayout() {
             <NavLink to="/admin/users" className="nav-link">Người dùng</NavLink>
             <NavLink to="/admin/orders" className="nav-link">Đơn hàng</NavLink>
             <NavLink to="/admin/wallets" className="nav-link">Ví đối soát</NavLink>
+            <NavLink to="/admin/vouchers" className="nav-link">Voucher</NavLink>
             <NavLink to="/admin/reviews" className="nav-link">Đánh giá</NavLink>
             <NavLink to="/admin/audit-logs" className="nav-link">Nhật ký</NavLink>
             <NavLink to="/admin/account" className="nav-link">Tài khoản</NavLink>
@@ -41,6 +42,7 @@ export default function AdminLayout() {
           <NavLink to="/admin/users">Người dùng</NavLink>
           <NavLink to="/admin/orders">Đơn hàng</NavLink>
           <NavLink to="/admin/wallets">Ví đối soát</NavLink>
+          <NavLink to="/admin/vouchers">Voucher</NavLink>
           <NavLink to="/admin/reviews">Đánh giá</NavLink>
           <NavLink to="/admin/audit-logs">Nhật ký</NavLink>
           <NavLink to="/admin/account">Tài khoản</NavLink>

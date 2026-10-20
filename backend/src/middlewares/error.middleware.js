@@ -3,7 +3,8 @@ const AppError = require('../utils/AppError');
 // Field bị trùng (lỗi 11000) -> message giữ đúng chữ FE đang map trong api/client.ts
 const DUPLICATE_MESSAGES = {
     email: 'Email already exists',
-    phone: 'Phone already exists'
+    phone: 'Phone already exists',
+    code: 'Voucher code already exists'
 };
 
 const notFound = (req, res) => {

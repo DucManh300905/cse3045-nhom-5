@@ -32,7 +32,7 @@ const completeOrder = async (theShop = shop, { qty = 1 } = {}) => {
     const theOwner = as(theShop.ownerToken);
     const order = await placeOrder(customer, theShop, { qty, fulfillmentType: 'PICKUP' });
     await theOwner.post(`${M}/${order.id}/accept`).expect(200);
-    for (const to of ['PREPARING', 'READY', 'COMPLETED']) {
+    for (const to of ['READY', 'COMPLETED']) {
         await theOwner.post(`${M}/${order.id}/status`, { to }).expect(200);
     }
     return order;
@@ -76,8 +76,7 @@ describe('Đơn COD hoàn thành -> trừ hoa hồng', () => {
 
     it('đơn chưa hoàn thành / bị hủy không ghi sổ', async () => {
         const order = await placeOrder(customer, shop, { fulfillmentType: 'PICKUP' });
-        await owner.post(`${M}/${order.id}/accept`).expect(200);
-        await owner.post(`${M}/${order.id}/status`, { to: 'PREPARING' }).expect(200);
+        await owner.post(`${M}/${order.id}/accept`).expect(200); // nhận = đang làm
         const cancelled = await placeOrder(customer, shop, { fulfillmentType: 'PICKUP' });
         await customer.post(`/api/orders/${cancelled.id}/cancel`, {}).expect(200);
 
@@ -96,9 +95,9 @@ describe('Đơn COD hoàn thành -> trừ hoa hồng', () => {
 
     it('voucher do MAK chịu: quán được bù phần giảm giá, hoa hồng tính trên giá gốc', async () => {
         const order = await placeOrder(customer, shop, { qty: 2, fulfillmentType: 'PICKUP' }); // 70.000
-        await Order.updateOne({ _id: order.id }, { $set: { discount: 20000, total: 50000 } });
+        await Order.updateOne({ _id: order.id }, { $set: { discount: 20000, platformDiscount: 20000, total: 50000 } });
         await owner.post(`${M}/${order.id}/accept`).expect(200);
-        for (const to of ['PREPARING', 'READY', 'COMPLETED']) {
+        for (const to of ['READY', 'COMPLETED']) {
             await owner.post(`${M}/${order.id}/status`, { to }).expect(200);
         }
 

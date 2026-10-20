@@ -77,7 +77,8 @@ test('quán nhận order:new; khách và quán nhận order:status_changed; quá
     const toOwner = nextEvent(ownerConn.socket, 'order:status_changed');
     await as(shop.ownerToken).post(`/api/merchant/orders/${order.id}/accept`).expect(200);
 
-    const expected = { orderId: order.id, from: 'PLACED', to: 'ACCEPTED', actorType: 'OWNER' };
+    // Nhận đơn = bắt đầu làm luôn: sự kiện mang trạng thái cuối PREPARING
+    const expected = { orderId: order.id, from: 'ACCEPTED', to: 'PREPARING', actorType: 'OWNER' };
     expect(await toCustomer).toMatchObject(expected);
     expect(await toOwner).toMatchObject(expected);
     expect(await customerBell).toMatchObject({ type: 'ORDER_STATUS', data: { link: '/orders' } });

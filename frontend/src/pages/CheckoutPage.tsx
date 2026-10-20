@@ -1,17 +1,22 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { getErrorCode, getErrorMessage } from '../api/client';
+import { getErrorCode, getErrorDetail, getErrorMessage } from '../api/client';
 import { menuApi } from '../api/menu';
 import { newIdempotencyKey, ordersApi, type PlaceOrderInput } from '../api/orders';
 import { usersApi } from '../api/users';
+import { vouchersApi } from '../api/vouchers';
 import AppHeader from '../components/AppHeader';
 import CartLines from '../components/CartLines';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useToast } from '../context/ToastContext';
-import type { Address, FulfillmentType, OrderPreview, PaymentMethod, PaymentMethods, Restaurant } from '../types';
+import type { Address, FulfillmentType, OrderPreview, PaymentMethod, PaymentMethods, PublicVoucher, Restaurant, VoucherFundedBy } from '../types';
 import { formatPrice, PHONE_REGEX } from '../utils/format';
+import { closedReason } from '../utils/openingHours';
+import { LocationPicker } from '../components/LazyMap';
+import { formatKm, fromPoint, type LatLng } from '../utils/geo';
+import { describeVoucher, FUNDED_LABEL, isVoucherError, PAYMENT_LABEL, voucherErrorMessage, voucherMethods } from '../utils/voucher';
 
 const STEPS = ['Chọn món', 'Thông tin giao hàng', 'Hoàn tất'];
 const MAX_ADDRESSES = 5;
@@ -32,6 +37,13 @@ export default function CheckoutPage() {
   const [fulfillment, setFulfillment] = useState<FulfillmentType>('DELIVERY');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('COD');
   const [methods, setMethods] = useState<PaymentMethods | null>(null);
+  // Voucher: tối đa 1 voucher quán + 1 voucher MAK (kind = loại của từng mã đã chọn)
+  const [voucherCodes, setVoucherCodes] = useState<string[]>([]);
+  const [voucherKinds, setVoucherKinds] = useState<Record<string, VoucherFundedBy>>({});
+  const [available, setAvailable] = useState<PublicVoucher[]>([]);
+  const [codeInput, setCodeInput] = useState('');
+  const [voucherNotice, setVoucherNotice] = useState('');
+  const [applying, setApplying] = useState(false);
   const [form, setForm] = useState({
     receiverName: user?.fullName ?? '',
     phone: user?.phone ?? '',
@@ -39,6 +51,10 @@ export default function CheckoutPage() {
     note: '',
   });
   const [saveAddress, setSaveAddress] = useState(true);
+  // Vị trí nơi nhận vừa ghim (địa chỉ mới, hoặc địa chỉ trong sổ chưa có vị trí)
+  const [pin, setPin] = useState<LatLng | null>(null);
+  const [outOfRange, setOutOfRange] = useState(false);
+  const fillAddress = useCallback((a: string) => setForm(f => (f.address.trim() ? f : { ...f, address: a })), []);
   const [preview, setPreview] = useState<OrderPreview | null>(null);
   const [previewError, setPreviewError] = useState('');
   const [error, setError] = useState('');
@@ -65,6 +81,14 @@ export default function CheckoutPage() {
     ordersApi.methods().then(setMethods).catch(() => setMethods(null));
   }, []);
 
+  // Voucher dùng được ở quán đang đặt (đổi quán -> bỏ voucher đã chọn)
+  useEffect(() => {
+    setVoucherCodes([]);
+    setVoucherNotice('');
+    if (!shopId) return;
+    vouchersApi.available(shopId).then(setAvailable).catch(() => setAvailable([]));
+  }, [shopId]);
+
   // Sổ địa chỉ: chọn sẵn địa chỉ mặc định
   useEffect(() => {
     usersApi.listAddresses()
@@ -81,21 +105,68 @@ export default function CheckoutPage() {
     [lines]
   );
 
+  const savedAddress = addresses.find(a => a.id === addressId);
+  // Vị trí nơi nhận (BR-81): địa chỉ trong sổ đã ghim, hoặc điểm vừa ghim trên bản đồ
+  const deliveryPoint: LatLng | null = fulfillment === 'DELIVERY' ? (fromPoint(savedAddress?.location) ?? pin) : null;
+  const pointKey = deliveryPoint ? `${deliveryPoint.lat.toFixed(5)},${deliveryPoint.lng.toFixed(5)}` : '';
+
+  // Đổi địa chỉ -> bỏ điểm đã ghim cho địa chỉ trước
+  useEffect(() => { setPin(null); }, [addressId]);
+
   // Tiền do server tính (BR-31): gọi lại khi giỏ hoặc hình thức nhận hàng đổi
   useEffect(() => {
     if (!shopId || !items.length) return;
     let ignore = false;
     const t = window.setTimeout(() => {
-      ordersApi.preview({ restaurantId: shopId, items, fulfillmentType: fulfillment })
-        .then(p => { if (!ignore) { setPreview(p); setPreviewError(''); } })
+      ordersApi.preview({ restaurantId: shopId, items, fulfillmentType: fulfillment, voucherCodes, paymentMethod, delivery: deliveryPoint ?? undefined })
+        .then(p => { if (!ignore) { setPreview(p); setPreviewError(''); setOutOfRange(false); } })
         .catch(err => {
           if (ignore) return;
+          // Giỏ đổi làm voucher không còn hợp lệ (vd dưới đơn tối thiểu) -> bỏ mã đó, tính lại
+          if (isVoucherError(err) && voucherCodes.length) {
+            const bad = String(getErrorDetail(err)?.code ?? '');
+            setVoucherNotice(`${bad ? `${bad}: ` : ''}${voucherErrorMessage(err)} Đã bỏ mã khỏi đơn.`);
+            setVoucherCodes(codes => (bad && codes.includes(bad) ? codes.filter(c => c !== bad) : []));
+            return;
+          }
           setPreview(null);
+          // Ngoài bán kính giao: nói rõ quãng đường + gợi ý tự đến lấy
+          if (getErrorCode(err) === 'OUT_OF_DELIVERY_RANGE') {
+            const d = getErrorDetail(err);
+            setOutOfRange(true);
+            setPreviewError(`Nơi nhận cách quán ${formatKm(Number(d?.distanceKm ?? 0))}, quán chỉ giao trong ${formatKm(Number(d?.maxKm ?? 0))}.`);
+            return;
+          }
+          setOutOfRange(false);
           setPreviewError(getErrorMessage(err));
         });
     }, 250);
     return () => { ignore = true; window.clearTimeout(t); };
-  }, [shopId, items, fulfillment]);
+    // pointKey: chỉ gọi lại khi vị trí nơi nhận đổi thật (tiết kiệm lượt gọi định tuyến)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shopId, items, fulfillment, voucherCodes, paymentMethod, pointKey]);
+
+  /** Thêm mã: kiểm tra riêng mã đó để biết loại, rồi thay mã cùng loại đang chọn (mỗi loại tối đa 1) */
+  const applyCode = async (raw: string) => {
+    const code = raw.trim().toUpperCase();
+    if (!code || !shopId) return;
+    if (voucherCodes.includes(code)) return setVoucherNotice(`Mã ${code} đã được áp dụng.`);
+    setApplying(true);
+    setVoucherNotice('');
+    try {
+      const p = await ordersApi.preview({ restaurantId: shopId, items, fulfillmentType: fulfillment, voucherCodes: [code], paymentMethod });
+      const kind = p.vouchers[0]?.fundedBy;
+      if (!kind) return;
+      setVoucherKinds(k => ({ ...k, [code]: kind }));
+      setVoucherCodes(codes => [...codes.filter(c => voucherKinds[c] !== kind), code]);
+      setCodeInput('');
+    } catch (err) {
+      setVoucherNotice(voucherErrorMessage(err));
+    } finally {
+      setApplying(false);
+    }
+  };
+  const removeCode = (code: string) => setVoucherCodes(codes => codes.filter(c => c !== code));
 
   const closed = !!restaurant && !restaurant.canAcceptOrders;
   const subtotal = preview?.subtotal ?? lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
@@ -106,20 +177,22 @@ export default function CheckoutPage() {
     if (!lines.length) return setError('Giỏ hàng đang trống.');
     if (closed) return setError('Quán hiện không nhận đơn.');
 
-    const input: PlaceOrderInput = { restaurantId: cartShop.id, items, fulfillmentType: fulfillment, paymentMethod };
+    const input: PlaceOrderInput = { restaurantId: cartShop.id, items, fulfillmentType: fulfillment, paymentMethod, voucherCodes };
     const saved = addresses.find(a => a.id === addressId);
     let newAddress: { receiverName: string; phone: string; addressLine: string } | null = null;
 
     if (fulfillment === 'DELIVERY') {
+      if (!deliveryPoint) return setError('Vui lòng ghim vị trí nhận hàng trên bản đồ.');
       if (saved) {
         input.addressId = saved.id;
-        input.delivery = { note: form.note.trim() || undefined };
+        // Địa chỉ cũ chưa có vị trí: gửi điểm vừa ghim (server lưu luôn vào sổ)
+        input.delivery = { note: form.note.trim() || undefined, ...(fromPoint(saved.location) ? {} : deliveryPoint) };
       } else {
         if (!form.receiverName.trim()) return setError('Vui lòng nhập tên người nhận.');
         if (!PHONE_REGEX.test(form.phone)) return setError('Vui lòng nhập số điện thoại liên hệ hợp lệ (10 chữ số, bắt đầu bằng 0).');
         if (form.address.trim().length < 5) return setError('Vui lòng nhập địa chỉ giao hàng cụ thể.');
         newAddress = { receiverName: form.receiverName.trim(), phone: form.phone, addressLine: form.address.trim() };
-        input.delivery = { ...newAddress, note: form.note.trim() || undefined };
+        input.delivery = { ...newAddress, note: form.note.trim() || undefined, ...deliveryPoint };
       }
     }
 
@@ -133,7 +206,7 @@ export default function CheckoutPage() {
 
       // Lưu sổ địa chỉ sau khi đặt xong; lỗi ở đây không ảnh hưởng đơn
       if (newAddress && saveAddress && addresses.length < MAX_ADDRESSES) {
-        usersApi.createAddress(newAddress).catch(err => notify(`Chưa lưu được địa chỉ: ${getErrorMessage(err)}`));
+        usersApi.createAddress({ ...newAddress, ...(deliveryPoint ?? {}) }).catch(err => notify(`Chưa lưu được địa chỉ: ${getErrorMessage(err)}`));
       }
 
       clear();
@@ -148,8 +221,14 @@ export default function CheckoutPage() {
     } catch (err) {
       // Server đã trả lời (từ chối) -> lần sau là yêu cầu mới; mạng lỗi -> giữ key để gửi lại an toàn
       if (axios.isAxiosError(err) && err.response) idempotencyKey.current = null;
-      setError(getErrorMessage(err));
+      setError(isVoucherError(err) ? voucherErrorMessage(err) : getErrorMessage(err));
       if (STALE_CART_CODES.includes(getErrorCode(err) ?? '')) setMenuVersion(v => v + 1);
+      // Voucher vừa hết lượt / hết hạn -> bỏ mã để khách đặt lại được
+      if (isVoucherError(err)) {
+        const bad = String(getErrorDetail(err)?.code ?? '');
+        setVoucherCodes(codes => (bad ? codes.filter(c => c !== bad) : []));
+        vouchersApi.available(cartShop.id).then(setAvailable).catch(() => {});
+      }
       setSubmitting(false);
     }
   };
@@ -216,6 +295,13 @@ export default function CheckoutPage() {
                     </div>
                   )}
 
+                  {savedAddress && !fromPoint(savedAddress.location) && (
+                    <div className="field">
+                      <span className="warn-line">Địa chỉ này chưa có vị trí trên bản đồ — ghim một lần, MAK lưu lại cho lần sau.</span>
+                      <LocationPicker value={pin} onChange={setPin} />
+                    </div>
+                  )}
+
                   {addressId === NEW_ADDRESS && (
                     <>
                       <label>
@@ -228,6 +314,10 @@ export default function CheckoutPage() {
                           maxLength={255}
                         />
                       </label>
+                      <div className="field">
+                        <span>Vị trí nhận hàng trên bản đồ *</span>
+                        <LocationPicker value={pin} onChange={setPin} onAddress={fillAddress} />
+                      </div>
                       <div className="form-grid">
                         <label>
                           <span>Tên người nhận *</span>
@@ -277,12 +367,81 @@ export default function CheckoutPage() {
                 <h2>{cartShop?.name ?? 'Đơn của bạn'}</h2>
                 {cartShop && <Link to={`/restaurants/${cartShop.slug}`} className="link-btn">+ Thêm món</Link>}
               </div>
-              {closed && <div className="form-error">Quán đang tạm ngưng nhận đơn.</div>}
+              {closed && restaurant && <div className="form-error">{closedReason(restaurant)?.full ?? 'Quán đang tạm ngưng nhận đơn'}. Chưa đặt được đơn lúc này.</div>}
               <CartLines />
+
+              <div className="voucher-box">
+                <b>Mã giảm giá</b>
+                <div className="voucher-input">
+                  <input
+                    value={codeInput}
+                    onChange={e => setCodeInput(e.target.value.toUpperCase())}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); applyCode(codeInput); } }}
+                    placeholder="Nhập mã"
+                    maxLength={20}
+                    aria-label="Mã giảm giá"
+                  />
+                  <button type="button" className="btn-soft" onClick={() => applyCode(codeInput)} disabled={applying || !codeInput.trim()}>
+                    Áp dụng
+                  </button>
+                </div>
+                {voucherNotice && <small className="warn-line">{voucherNotice}</small>}
+                {available.length > 0 && (
+                  <ul className="voucher-list">
+                    {available.map(v => {
+                      const chosen = voucherCodes.includes(v.code);
+                      const short = subtotal < v.minOrderAmount ? v.minOrderAmount - subtotal : 0;
+                      const methods = voucherMethods(v);
+                      const wrongMethod = !methods.includes(paymentMethod);
+                      return (
+                        <li key={v.id} className={chosen ? 'chosen' : ''}>
+                          <div>
+                            <small className={`voucher-kind k-${v.fundedBy}`}>{FUNDED_LABEL[v.fundedBy]}</small>
+                            <b className="mono">{v.code}</b>
+                            <small>{describeVoucher(v)}{v.description ? ` · ${v.description}` : ''}</small>
+                            {short > 0 && <small className="muted">Mua thêm {formatPrice(short)} để dùng</small>}
+                            {wrongMethod && <small className="muted">Chọn thanh toán {methods.map(m => PAYMENT_LABEL[m]).join(' / ')} để dùng</small>}
+                          </div>
+                          {chosen
+                            ? <button type="button" className="link-btn" onClick={() => removeCode(v.code)}>Bỏ</button>
+                            : <button type="button" className="btn-outline" disabled={applying || short > 0 || wrongMethod} onClick={() => applyCode(v.code)}>Dùng</button>}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
               <div className="totals">
                 <div><span>Tạm tính ({count} món)</span><span>{formatPrice(subtotal)}</span></div>
                 <div><span>Phí giao hàng</span><span className="free">Miễn phí</span></div>
-                {previewError && <div className="warn-line"><span>{previewError}</span></div>}
+                {preview?.route && (
+                  <div className="route-line">
+                    <span>Quãng đường giao</span>
+                    <span>
+                      {formatKm(preview.route.distanceKm)} · ~{preview.route.durationMinutes} phút
+                      {preview.route.source === 'ESTIMATE' && <small className="muted"> (ước lượng)</small>}
+                    </span>
+                  </div>
+                )}
+                {preview?.estimatedDeliveryMinutes && (
+                  <div className="route-line"><span>Dự kiến nhận hàng</span><span>khoảng {preview.estimatedDeliveryMinutes} phút sau khi quán nhận đơn</span></div>
+                )}
+                {preview?.vouchers.map(v => (
+                  <div key={v.code} className="discount-line">
+                    <span>
+                      {FUNDED_LABEL[v.fundedBy]} <b className="mono">{v.code}</b>{' '}
+                      <button type="button" className="link-btn small" onClick={() => removeCode(v.code)} aria-label={`Bỏ mã ${v.code}`}>✕</button>
+                    </span>
+                    <span>−{formatPrice(v.discount)}</span>
+                  </div>
+                ))}
+                {previewError && (
+                  <div className="warn-line">
+                    <span>{previewError}</span>
+                    {outOfRange && <button type="button" className="link-btn" onClick={() => setFulfillment('PICKUP')}>Chuyển sang tự đến lấy</button>}
+                  </div>
+                )}
                 <div className="grand"><span>Tổng cộng</span><strong>{preview ? formatPrice(preview.total) : '...'}</strong></div>
               </div>
               {error && <div className="form-error" role="alert">{error}</div>}

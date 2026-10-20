@@ -43,7 +43,8 @@ export const menuApi = {
     return res.data.data;
   },
 
-  async listRestaurants(query: RestaurantQuery = {}) {
+  /** Gửi lat/lng người xem -> mỗi quán có distanceKm */
+  async listRestaurants(query: RestaurantQuery & { lat?: number; lng?: number } = {}) {
     const res = await client.get<ApiResponse<Paginated<Restaurant>>>('/restaurants', { params: clean(query) });
     return res.data.data;
   },

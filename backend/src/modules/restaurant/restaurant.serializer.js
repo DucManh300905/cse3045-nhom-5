@@ -1,4 +1,6 @@
 const { isWithinOpeningHours, canAcceptOrders } = require('../../utils/openingHours');
+const { haversineKm, fromPoint, round1 } = require('../../utils/geo');
+const { ROAD_FACTOR } = require('../routing/providers/estimate');
 
 // Dùng cho chủ quán và admin.
 // Không bao giờ trả đường dẫn file giấy tờ (dữ liệu nhạy cảm).
@@ -20,8 +22,15 @@ const toRestaurantResponse = (restaurant, { documentUrl } = {}) => {
     return data;
 };
 
+// Khoảng cách ước lượng tới người xem (thẻ quán) — không gọi API định tuyến cho cả danh sách
+const distanceFrom = (restaurant, viewer) => {
+    const at = fromPoint(restaurant.location);
+    return viewer && at ? round1(haversineKm(viewer, at) * ROAD_FACTOR) : undefined;
+};
+
 // Dùng cho khách (API public): chỉ liệt kê field được phép, không lộ giấy tờ, hoa hồng, chủ quán...
-const toPublicRestaurantResponse = (restaurant) => ({
+// viewer = { lat, lng } của người xem (nếu gửi) -> thêm distanceKm
+const toPublicRestaurantResponse = (restaurant, viewer) => ({
     id: restaurant._id,
     name: restaurant.name,
     slug: restaurant.slug,
@@ -39,7 +48,8 @@ const toPublicRestaurantResponse = (restaurant) => ({
     ratingAvg: restaurant.ratingAvg,
     ratingCount: restaurant.ratingCount,
     isOpenNow: isWithinOpeningHours(restaurant.openingHours),
-    canAcceptOrders: canAcceptOrders(restaurant)
+    canAcceptOrders: canAcceptOrders(restaurant),
+    distanceKm: distanceFrom(restaurant, viewer)
 });
 
 // Bản rút gọn đi kèm từng món trong kết quả tìm món

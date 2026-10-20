@@ -24,6 +24,9 @@ export interface RestaurantInput {
   minOrderAmount?: number;
   deliveryRadiusKm?: number;
   avgPrepMinutes?: number;
+  /** Vị trí quán (bắt buộc khi nộp hồ sơ — BR-80) */
+  lat?: number;
+  lng?: number;
 }
 
 export interface MenuItemInput {

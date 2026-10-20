@@ -12,6 +12,7 @@ import { useCart } from '../context/CartContext';
 import { useToast } from '../context/ToastContext';
 import type { MenuItem, Restaurant, RestaurantSummary } from '../types';
 import { formatPrice } from '../utils/format';
+import { currentPosition, geoPermissionGranted, type LatLng } from '../utils/geo';
 
 type Category = 'ALL' | 'FOOD' | 'DRINK';
 type Sort = NonNullable<MenuItemQuery['sort']>;
@@ -66,11 +67,17 @@ export default function MenuPage() {
   const [error, setError] = useState('');
 
   // Quán xếp theo điểm đánh giá có trọng số (server); quán đang nhận đơn lên trước
+  // Đã cho phép vị trí từ trước -> hiện khoảng cách trên thẻ quán (không bật hộp hỏi quyền ở trang này)
+  const [viewer, setViewer] = useState<LatLng | null>(null);
   useEffect(() => {
-    menuApi.listRestaurants({ limit: 100, sort: 'rating', minRating: topRated ? MIN_TOP_RATING : undefined })
+    geoPermissionGranted().then(ok => { if (ok) currentPosition().then(setViewer).catch(() => {}); });
+  }, []);
+
+  useEffect(() => {
+    menuApi.listRestaurants({ limit: 100, sort: 'rating', minRating: topRated ? MIN_TOP_RATING : undefined, ...(viewer ?? {}) })
       .then(r => setRestaurants([...r.items].sort((a, b) => Number(b.canAcceptOrders) - Number(a.canAcceptOrders))))
       .catch(() => setRestaurants([]));
-  }, [topRated]);
+  }, [topRated, viewer]);
 
   // Đổi bộ lọc -> tải lại từ trang 1; "Xem thêm" -> nối trang tiếp theo
   const filters = useMemo<MenuItemQuery>(() => ({

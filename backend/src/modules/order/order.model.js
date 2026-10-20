@@ -133,14 +133,57 @@ const orderSchema = new mongoose.Schema(
             receiverName: String,
             phone: String,
             addressLine: String,
-            note: String
+            note: String,
+            // Vị trí nơi nhận (BR-81, bắt buộc với DELIVERY từ 20/10/2026) — dữ liệu cá nhân (BR-85)
+            location: {
+                type: {
+                    type: String,
+                    enum: ['Point']
+                },
+                coordinates: {
+                    type: [Number],
+                    default: undefined
+                }
+            }
         },
+
+        // Tuyến quán -> nơi nhận lúc đặt (BR-82): đường đi thật (ROUTING) hoặc ước lượng (ESTIMATE)
+        route: {
+            distanceKm: Number,
+            durationMinutes: Number,
+            source: { type: String, enum: ['ROUTING', 'ESTIMATE'] },
+            provider: String,
+            polyline: String
+        },
+        // Thời gian giao dự kiến từ lúc quán nhận = chuẩn bị + di chuyển (BR-84)
+        estimatedDeliveryMinutes: Number,
 
         subtotal: money,
         // Luôn 0: miễn phí giao hàng (quyết định 06/10/2026)
         deliveryFee: { ...money, default: 0 },
+        // Tổng giảm = restaurantDiscount (quán chịu) + platformDiscount (MAK chịu)
         discount: { ...money, default: 0 },
+        restaurantDiscount: { ...money, default: 0 },
+        platformDiscount: { ...money, default: 0 },
         total: money,
+
+        // Snapshot voucher đã áp (tối đa 1 voucher quán + 1 voucher MAK)
+        vouchers: {
+            type: [
+                new mongoose.Schema(
+                    {
+                        voucher: { type: mongoose.Schema.Types.ObjectId, ref: 'Voucher', required: true },
+                        code: { type: String, required: true },
+                        fundedBy: { type: String, enum: ['PLATFORM', 'RESTAURANT'], required: true },
+                        type: { type: String, enum: ['PERCENT', 'FIXED'], required: true },
+                        value: { type: Number, required: true },
+                        discount: money
+                    },
+                    { _id: false }
+                )
+            ],
+            default: []
+        },
 
         // Snapshot hoa hồng tại lúc đặt (BR-51)
         commissionRate: {

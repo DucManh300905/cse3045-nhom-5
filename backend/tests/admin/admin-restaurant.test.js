@@ -28,7 +28,7 @@ const createOwnerWithRestaurant = async ({ name = 'Cơm Gà Hòa Lạc', submit 
     const { token } = await createUserAndLogin({ role: 'RESTAURANT_OWNER' });
     const owner = as(token);
 
-    const created = await owner.post(MERCHANT, { name, address: 'Thạch Thất', phone: '0912345678' }).expect(201);
+    const created = await owner.post(MERCHANT, { name, address: 'Thạch Thất', phone: '0912345678', lat: 21.0136, lng: 105.5254 }).expect(201);
     await owner.put(`${MERCHANT}/opening-hours`, { openingHours: fullWeek }).expect(200);
 
     for (const type of ['BUSINESS_LICENSE', 'ID_CARD']) {
