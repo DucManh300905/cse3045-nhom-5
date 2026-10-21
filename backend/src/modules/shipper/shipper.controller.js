@@ -53,10 +53,11 @@ const createProfile = asyncHandler(async (req, res) => {
         }
         throw error;
     }
-    return ok(res, toShipperResponse(shipper), 201);
+    return ok(res, await withAccount(shipper), 201);
 });
 
-// Kèm email tài khoản: tài xế bắt buộc có email đã xác thực (BR-103)
+// Kèm email tài khoản: tài xế bắt buộc có email đã xác thực (BR-103).
+// MỌI phản hồi trả hồ sơ phải đi qua đây — thiếu emailVerified thì app tưởng chưa xác thực và hiện lại ô xác thực email.
 const withAccount = async (shipper) => {
     const user = await User.findById(shipper.user).select('email emailVerified').lean();
     return { ...toShipperResponse(shipper), email: user?.email ?? null, emailVerified: Boolean(user?.email && user.emailVerified) };
@@ -71,7 +72,7 @@ const updateProfile = asyncHandler(async (req, res) => {
     assertEditable(shipper);
     PROFILE_FIELDS.forEach((f) => req.body[f] !== undefined && (shipper[f] = req.body[f]));
     await shipper.save();
-    return ok(res, toShipperResponse(shipper));
+    return ok(res, await withAccount(shipper));
 });
 
 // POST /shipper/profile/documents — multipart: type + file. Cùng loại thì thay file cũ.
@@ -100,7 +101,7 @@ const uploadDocument = asyncHandler(async (req, res) => {
     await shipper.save();
     removeFile(old && path.join(PRIVATE_DIR, old.fileKey));
 
-    return ok(res, toShipperResponse(shipper));
+    return ok(res, await withAccount(shipper));
 });
 
 // POST /shipper/profile/submit — DRAFT | REJECTED -> SUBMITTED
@@ -172,11 +173,11 @@ const getState = asyncHandler(async (req, res) => {
 // POST /shipper/online { lat?, lng? }
 const goOnline = asyncHandler(async (req, res) => {
     const shipper = await delivery.goOnline({ shipper: await me(req), lat: req.body?.lat, lng: req.body?.lng });
-    return ok(res, toShipperResponse(shipper));
+    return ok(res, await withAccount(shipper));
 });
 
 // POST /shipper/offline
-const goOffline = asyncHandler(async (req, res) => ok(res, toShipperResponse(await delivery.goOffline({ shipper: await me(req) }))));
+const goOffline = asyncHandler(async (req, res) => ok(res, await withAccount(await delivery.goOffline({ shipper: await me(req) }))));
 
 // POST /shipper/location { lat, lng }
 const updateLocation = asyncHandler(async (req, res) => {

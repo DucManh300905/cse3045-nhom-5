@@ -125,7 +125,7 @@ export default function ShipperProfilePage() {
         </section>
       )}
 
-      {profile && !profile.emailVerified && <EmailVerifyPanel onDone={reload} />}
+      {profile?.emailVerified === false && <EmailVerifyPanel onDone={reload} />}
 
       <form className="panel form-panel" onSubmit={save}>
         <h2>Thông tin tài xế</h2>
