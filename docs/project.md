@@ -393,6 +393,7 @@ Mọi chuyển khác → lỗi `409 INVALID_STATUS_TRANSITION`. Mỗi lần chuy
 | BR-100 | Ca theo **khu vực** (gộp lịch các quán); số tài xế cần = đơn dự kiến ÷ 6. Ca = cam kết trực tuyến; đơn vẫn điều phối tự động, **ưu tiên tài xế đang trong ca**. Đăng ký tới 2 giờ trước ca, không trùng giờ. | ✅ |
 | BR-101 | "Hoạt động" = bật trực tuyến. 30 phút đầu ca chưa từng trực tuyến = **vắng ca**; hủy ca < 2 giờ trước giờ bắt đầu = vi phạm. Thang: cảnh cáo → khóa 3 ngày → khóa 5 ngày → khóa vĩnh viễn; 30 ngày không vi phạm (tính từ lúc hết khóa): 1→0, 2→0, 3→2→0; admin mở lại tài khoản khóa vĩnh viễn → bậc 3. | ✅ |
 | BR-102 | Trả **3 đơn đã nhận liên tiếp** → khóa nhận đơn 1 ngày (không vào thang phạt; giao xong 1 đơn thì đếm lại). Bị khóa vẫn đăng nhập và rút tiền được. Thay BR-94 phần "3 lần / 24 giờ". | ✅ |
+| BR-104 | Tài xế **bắt buộc ảnh chân dung** để nộp hồ sơ; tài xế cũ chưa có ảnh không bật trực tuyến được tới khi tải (dùng được ngay, không duyệt lại). Đã duyệt thì không tự đổi ảnh. Ảnh chỉ khách / quán của đơn tài xế đó nhận, admin và chính tài xế xem; hiện trong khung theo dõi đơn sau khi tài xế nhận đơn (không hiện trong lời mời). | ✅ |
 | BR-103 | Tài xế **bắt buộc email đã xác thực** (OTP) để nộp hồ sơ và đăng ký ca; lịch ca, nhắc ca, cảnh cáo / khóa gửi cả trong app và qua email. | ✅ |
 
 ### Đánh giá

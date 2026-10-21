@@ -4,7 +4,7 @@ const { body, param, query } = require('express-validator');
 const { authenticate } = require('../../middlewares/auth.middleware');
 const { authorizeRoles } = require('../../middlewares/role.middleware');
 const { validate } = require('../../middlewares/validate.middleware');
-const { shipperDocumentUpload, deliveryProofUpload } = require('../../middlewares/upload.middleware');
+const { shipperDocumentUpload, deliveryProofUpload, shipperPortraitUpload } = require('../../middlewares/upload.middleware');
 const { paginationRules } = require('../../utils/pagination');
 const { textRule, phoneRule } = require('../../utils/validationRules');
 const { SHIPPER_STATUSES, SHIPPER_DOCUMENT_TYPES, VEHICLE_TYPES } = require('./shipper.model');
@@ -53,6 +53,7 @@ shipperRouter.post('/profile', profileRules(true), validate, c.createProfile);
 shipperRouter.get('/profile', c.getProfile);
 shipperRouter.put('/profile', profileRules(false), validate, c.updateProfile);
 shipperRouter.post('/profile/documents', shipperDocumentUpload, c.uploadDocument);
+shipperRouter.post('/profile/portrait', shipperPortraitUpload, c.uploadPortrait);
 shipperRouter.post('/profile/submit', c.submitProfile);
 shipperRouter.put(
     '/bank-account',
@@ -104,6 +105,7 @@ shipperRouter.post(
 const deliveryRouter = express.Router();
 deliveryRouter.use(authenticate);
 deliveryRouter.get('/orders/:id/proof', [idRule()], validate, c.getProof);
+deliveryRouter.get('/shippers/:id/portrait', [idRule('Driver')], validate, c.getPortrait);
 
 // ======================= /api/admin/... — gắn vào admin.routes.js (đã authenticate ADMIN) =======================
 

@@ -62,6 +62,7 @@ const makeShipper = async ({ online = false, where = SHOP } = {}) => {
         phone: `09${(phoneSeq += 1)}`,
         vehicleType: 'MOTORBIKE',
         licensePlate: '29A-11111',
+        portrait: { fileKey: 'shipper-portraits/test.png', mimeType: 'image/png', uploadedAt: new Date() },
         status: 'APPROVED',
         isOnline: online,
         location: toPoint(where),

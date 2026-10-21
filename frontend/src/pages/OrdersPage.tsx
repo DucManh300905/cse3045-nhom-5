@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { getErrorMessage } from '../api/client';
 import { ordersApi } from '../api/orders';
 import AppHeader from '../components/AppHeader';
 import DeliveryTracker from '../components/DeliveryTracker';
 import { useSocketEvent } from '../context/SocketContext';
+import { useMarkSeen } from '../context/BadgeContext';
+import { groupOf } from '../utils/badges';
 import { useToast } from '../context/ToastContext';
 import type { Order, OrderStatus } from '../types';
 import { formatDateTime, formatPrice } from '../utils/format';
@@ -56,6 +58,15 @@ const CANCEL_REASON: Record<string, string> = {
   OTHER: 'Lý do khác',
 };
 
+// Lọc theo trạng thái để xem lịch sử dễ hơn (22/10/2026). Mục đang chọn nằm trên URL: /orders?filter=cancelled
+const FILTERS: { key: string; label: string; statuses?: OrderStatus[] }[] = [
+  { key: 'all', label: 'Tất cả' },
+  { key: 'active', label: 'Đang xử lý', statuses: ['PENDING_PAYMENT', 'PLACED', 'ACCEPTED', 'PREPARING', 'READY', 'DELIVERING'] },
+  { key: 'completed', label: 'Hoàn thành', statuses: ['COMPLETED'] },
+  { key: 'cancelled', label: 'Đã hủy', statuses: ['CANCELLED'] },
+  { key: 'rejected', label: 'Bị từ chối', statuses: ['REJECTED'] },
+];
+
 export default function OrdersPage() {
   const notify = useToast();
   const placed = useLocation().state as { placedCode?: string; placedId?: string } | null;
@@ -65,12 +76,23 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  const filter = FILTERS.find(f => f.key === params.get('filter')) ?? FILTERS[0];
+  const matches = (o: Order) => !filter.statuses || filter.statuses.includes(o.status);
+  const chooseFilter = (key: string) => {
+    const next = new URLSearchParams(params);
+    if (key === 'all') next.delete('filter'); else next.set('filter', key);
+    setParams(next, { replace: true });
+    setPage(1);
+  };
+  // Đang xem đơn -> thông báo đơn coi như đã xem (số đỏ ở menu tài khoản mất)
+  useMarkSeen(groupOf('CUSTOMER', 'orders')?.types);
 
   /** Tải lại từ trang 1 tới trang hiện tại (giữ danh sách đang xem) */
   const load = useCallback(async (upTo: number) => {
     setLoading(true);
     try {
-      const res = await ordersApi.list({ page: 1, limit: Math.min(MAX_LIMIT, PAGE_SIZE * upTo) });
+      const res = await ordersApi.list({ page: 1, limit: Math.min(MAX_LIMIT, PAGE_SIZE * upTo), status: filter.statuses });
       setOrders(res.items);
       setTotal(res.total);
       setError('');
@@ -79,7 +101,8 @@ export default function OrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter.key]);
 
   useEffect(() => { load(page); }, [load, page]);
 
@@ -88,7 +111,12 @@ export default function OrdersPage() {
     if (e.actorType !== 'CUSTOMER') notify(`Đơn ${e.code}: ${STATUS_NOTICE[e.to] ?? e.to}`);
     try {
       const fresh = await ordersApi.get(e.orderId);
-      setOrders(list => (list.some(o => o.id === fresh.id) ? list.map(o => (o.id === fresh.id ? fresh : o)) : [fresh, ...list]));
+      // Đơn đổi trạng thái không còn thuộc mục đang lọc -> bỏ khỏi danh sách; mới thuộc mục -> thêm lên đầu
+      setOrders(list => {
+        const rest = list.filter(o => o.id !== fresh.id);
+        if (!matches(fresh)) return rest;
+        return list.some(o => o.id === fresh.id) ? list.map(o => (o.id === fresh.id ? fresh : o)) : [fresh, ...rest];
+      });
     } catch {
       load(page);
     }
@@ -143,6 +171,14 @@ export default function OrdersPage() {
           </div>
         )}
 
+        <div className="cat-tabs order-tabs order-filter" role="tablist" aria-label="Lọc theo trạng thái đơn">
+          {FILTERS.map(f => (
+            <button key={f.key} role="tab" aria-selected={filter.key === f.key} className={filter.key === f.key ? 'active' : ''} onClick={() => chooseFilter(f.key)}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+
         {error ? (
           <div className="empty-state">
             <h2>Không tải được đơn hàng</h2>
@@ -152,11 +188,18 @@ export default function OrdersPage() {
         ) : loading && orders.length === 0 ? (
           <div className="page-loading">Đang tải...</div>
         ) : orders.length === 0 ? (
-          <div className="empty-state">
-            <h2>Bạn chưa có đơn nào</h2>
-            <p>Món ngon đang chờ bạn ở thực đơn hôm nay.</p>
-            <Link to="/menu" className="btn-primary">Đặt món ngay</Link>
-          </div>
+          filter.key === 'all' ? (
+            <div className="empty-state">
+              <h2>Bạn chưa có đơn nào</h2>
+              <p>Món ngon đang chờ bạn ở thực đơn hôm nay.</p>
+              <Link to="/menu" className="btn-primary">Đặt món ngay</Link>
+            </div>
+          ) : (
+            <div className="empty-state">
+              <h2>Không có đơn nào ở mục "{filter.label}"</h2>
+              <button className="btn-soft" onClick={() => chooseFilter('all')}>Xem tất cả đơn</button>
+            </div>
+          )
         ) : (
           <>
             <ul className="order-list">

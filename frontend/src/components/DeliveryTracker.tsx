@@ -8,6 +8,7 @@ import { DELIVERY_STATUS_LABEL, VEHICLE_LABEL, decodePolyline, etaText } from '.
 import { TrackMap } from './LazyMap';
 import type { TrackPoint } from './LocationPicker';
 import ProofPhoto from './ProofPhoto';
+import PrivateImage from './PrivateImage';
 import { StarsInput } from './Stars';
 
 const DRIVER_RATING_LABELS = ['', 'Rất tệ', 'Chưa tốt', 'Bình thường', 'Tốt', 'Tuyệt vời'];
@@ -90,7 +91,12 @@ export default function DeliveryTracker({ order, viewer, onChanged }: { order: O
 
       {driver?.fullName && (
         <div className="driver-card">
-          <span className="driver-avatar" aria-hidden>🛵</span>
+          <PrivateImage
+            url={d.shipperPortraitUrl ?? tracking?.shipper?.portraitUrl}
+            alt={`Ảnh tài xế ${driver.fullName}`}
+            className="driver-avatar photo"
+            fallback={<span className="driver-avatar" aria-hidden>🛵</span>}
+          />
           <div>
             <b>{driver.fullName}</b>
             <small>

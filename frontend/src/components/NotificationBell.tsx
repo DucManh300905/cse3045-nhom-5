@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { notificationsApi } from '../api/notifications';
 import { useAuth } from '../context/AuthContext';
 import { useSocketEvent } from '../context/SocketContext';
+import { NOTIFICATIONS_CHANGED } from '../context/BadgeContext';
 import type { AppNotification } from '../types';
 
 const PAGE_SIZE = 10;
@@ -46,6 +47,14 @@ export default function NotificationBell() {
     if (user) load();
   }, [user, load]);
 
+  // Số đỏ trên menu vừa đánh dấu đã đọc một mục -> tải lại số chưa đọc của chuông
+  useEffect(() => {
+    const onChanged = (e: Event) => { if ((e as CustomEvent).detail === 'badges') load(); };
+    window.addEventListener(NOTIFICATIONS_CHANGED, onChanged);
+    return () => window.removeEventListener(NOTIFICATIONS_CHANGED, onChanged);
+  }, [load]);
+  const changed = () => window.dispatchEvent(new CustomEvent(NOTIFICATIONS_CHANGED, { detail: 'bell' }));
+
   // Thông báo mới tới ngay, không cần tải lại
   useSocketEvent('notification:new', n => {
     setItems(list => [n, ...list.filter(x => x.id !== n.id)].slice(0, Math.max(PAGE_SIZE, list.length)));
@@ -74,7 +83,7 @@ export default function NotificationBell() {
     if (!n.isRead) {
       setItems(list => list.map(x => (x.id === n.id ? { ...x, isRead: true } : x)));
       setUnread(c => Math.max(0, c - 1));
-      notificationsApi.markRead(n.id).catch(() => load());
+      notificationsApi.markRead(n.id).then(changed).catch(() => load());
     }
     if (n.data.link) navigate(n.data.link);
   };
@@ -82,7 +91,7 @@ export default function NotificationBell() {
   const readAll = async () => {
     setItems(list => list.map(x => ({ ...x, isRead: true })));
     setUnread(0);
-    await notificationsApi.markAllRead().catch(() => load());
+    await notificationsApi.markAllRead().then(changed).catch(() => load());
   };
 
   return (

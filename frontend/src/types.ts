@@ -248,6 +248,8 @@ export interface Order {
     eta?: DeliveryEta | null;
     proof?: DeliveryProof;
     rating?: { stars: number; comment?: string; at: string };
+    /** Ảnh chân dung tài xế của đơn (API cần token) */
+    shipperPortraitUrl?: string;
   };
   /** Chụp theo hình thức giao của quán lúc đặt (đơn tự lấy không có) */
   deliveryMode?: DeliveryMode;
@@ -820,6 +822,8 @@ export interface ShipperProfile {
   /** Thang phạt ca: 0 sạch · 1 cảnh cáo · 2 khóa 3 ngày · 3 khóa 5 ngày · 4 khóa vĩnh viễn */
   penaltyLevel?: number;
   penaltyDecayAt?: string | null;
+  /** Ảnh chân dung (bắt buộc) — url là API cần token (xem bằng PrivateImage) */
+  portrait?: { uploadedAt: string; url: string } | null;
   /** Email tài khoản (tài xế bắt buộc email đã xác thực) */
   email?: string | null;
   emailVerified?: boolean;
@@ -908,7 +912,7 @@ export interface OrderTracking {
   status: OrderStatus;
   deliveryMode: DeliveryMode | null;
   deliveryStatus: DeliveryStatus | null;
-  shipper: (ShipperSnapshot & { ratingAvg: number | null; ratingCount: number | null }) | null;
+  shipper: (ShipperSnapshot & { ratingAvg: number | null; ratingCount: number | null; portraitUrl?: string | null }) | null;
   location: (LatLngPoint & { at: string }) | null;
   eta: DeliveryEta | null;
   store: { name: string; address: string; location: LatLngPoint | null } | null;

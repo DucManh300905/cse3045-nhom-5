@@ -68,6 +68,12 @@ export const shipperApi = {
     return res.data.data;
   },
 
+  /** Ảnh chân dung (bắt buộc) — đã thu nhỏ ở trình duyệt */
+  async uploadPortrait(photo: Blob) {
+    const res = await client.post<ApiResponse<ShipperProfile>>('/shipper/profile/portrait', form('photo', photo), multipart);
+    return res.data.data;
+  },
+
   async submit() {
     const res = await client.post<ApiResponse<ShipperProfile>>('/shipper/profile/submit');
     return res.data.data;

@@ -1,5 +1,8 @@
 const { fromPoint } = require('../../utils/geo');
 
+/** Link xem ảnh chân dung tài xế (API có kiểm quyền) */
+const portraitUrl = (shipperId) => `/delivery/shippers/${shipperId}/portrait`;
+
 // Hồ sơ tài xế cho chính tài xế và admin. documentUrl: link xem giấy tờ (chỉ admin)
 const toShipperResponse = (shipper, { documentUrl } = {}) => {
     const data = shipper.toJSON();
@@ -12,6 +15,7 @@ const toShipperResponse = (shipper, { documentUrl } = {}) => {
         ...(documentUrl && { url: documentUrl(shipper, d) })
     }));
     data.location = fromPoint(shipper.location);
+    data.portrait = shipper.portrait?.fileKey ? { uploadedAt: shipper.portrait.uploadedAt, url: portraitUrl(shipper._id) } : null;
     return data;
 };
 
@@ -25,6 +29,10 @@ const withProofUrl = (data) => {
         data.delivery.proof = { kind: proof.kind, takenAt: proof.takenAt, url: `/delivery/orders/${data.id ?? data._id}/proof` };
     } else if (data.delivery) {
         delete data.delivery.proof;
+    }
+    // Ảnh chân dung tài xế của đơn (khách / quán thấy trong khung theo dõi)
+    if (data.delivery?.shipper) {
+        data.delivery.shipperPortraitUrl = portraitUrl(data.delivery.shipper);
     }
     return data;
 };
@@ -83,6 +91,7 @@ const toShipperOrder = (order, restaurant) => {
 };
 
 module.exports = {
+    portraitUrl,
     toShipperResponse,
     withProofUrl,
     toShipperOrder

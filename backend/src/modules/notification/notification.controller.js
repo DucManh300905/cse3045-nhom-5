@@ -1,3 +1,5 @@
+const mongoose = require('mongoose');
+
 const Notification = require('./notification.model');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
@@ -37,6 +39,31 @@ const markRead = asyncHandler(async (req, res) => {
     return res.status(200).json({ success: true, data: notification });
 });
 
+/**
+ * GET /notifications/unread-counts — số chưa đọc theo loại, cho số đỏ trên từng mục menu / tab
+ * @returns { total, byType: { ORDER_NEW: 2, ... } }
+ */
+const unreadCounts = asyncHandler(async (req, res) => {
+    const rows = await Notification.aggregate([
+        { $match: { user: new mongoose.Types.ObjectId(req.user.userId), isRead: false } },
+        { $group: { _id: '$type', count: { $sum: 1 } } }
+    ]);
+    const byType = Object.fromEntries(rows.map((r) => [r._id, r.count]));
+    return res.status(200).json({
+        success: true,
+        data: { total: rows.reduce((sum, r) => sum + r.count, 0), byType }
+    });
+});
+
+// PATCH /notifications/read-types { types: [...] } — mở trang / tab nào thì đánh dấu đã đọc thông báo của mục đó
+const markTypesRead = asyncHandler(async (req, res) => {
+    const { modifiedCount } = await Notification.updateMany(
+        { user: req.user.userId, isRead: false, type: { $in: req.body.types } },
+        { $set: { isRead: true } }
+    );
+    return res.status(200).json({ success: true, data: { modifiedCount } });
+});
+
 // PATCH /notifications/read-all
 const markAllRead = asyncHandler(async (req, res) => {
     const { modifiedCount } = await Notification.updateMany(
@@ -48,6 +75,8 @@ const markAllRead = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+    unreadCounts,
+    markTypesRead,
     listNotifications,
     markRead,
     markAllRead

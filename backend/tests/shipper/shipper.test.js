@@ -58,6 +58,7 @@ const makeShipper = async ({ at = SHOP, online = true, status = 'APPROVED' } = {
         phone: `09${(phoneSeq += 1)}`,
         vehicleType: 'MOTORBIKE',
         licensePlate: '29A-12345',
+        portrait: { fileKey: 'shipper-portraits/test.png', mimeType: 'image/png', uploadedAt: new Date() },
         status,
         isOnline: online,
         location: toPoint(at),
@@ -142,6 +143,15 @@ describe('Hồ sơ tài xế', () => {
             const doc = await multipart(token).post(`${S}/profile/documents`).field('type', type).attach('file', PNG, { filename: `${type}.png`, contentType: 'image/png' }).expect(200);
             expect(doc.body.data.emailVerified).toBe(true);
         }
+        // Thiếu ảnh chân dung -> chưa nộp được
+        const noPortrait = await driver.post(`${S}/profile/submit`);
+        expect(noPortrait.status).toBe(422);
+        expect(noPortrait.body.errors.map((e) => e.field)).toContain('portrait');
+        const portrait = await multipart(token).post(`${S}/profile/portrait`).attach('photo', PNG, { filename: 'me.png', contentType: 'image/png' });
+        expect(portrait.status).toBe(200);
+        expect(portrait.body.data.portrait.url).toMatch(/^\/delivery\/shippers\/[0-9a-f]+\/portrait$/);
+        expect(JSON.stringify(portrait.body.data)).not.toContain('shipper-portraits/');
+
         const submitted = await driver.post(`${S}/profile/submit`);
         expect(submitted.status).toBe(200);
         expect(submitted.body.data.status).toBe('SUBMITTED');
@@ -495,5 +505,52 @@ describe('Thu nhập tài xế', () => {
         await admin.post(`/api/admin/payouts/${payout.body.data.id}/paid`, { bankRef: 'FT1' }).expect(200);
         expect(await Notification.exists({ user: driver.userId, type: 'PAYOUT_PAID' })).toBeTruthy();
         expect(await totalBalance()).toBe(0);
+    });
+});
+
+describe('Ảnh chân dung tài xế', () => {
+    it('tài xế cũ chưa có ảnh: không bật trực tuyến được, tải ảnh xong dùng ngay; đã có ảnh thì không tự đổi', async () => {
+        const driver = await makeShipper({ online: false });
+        await Shipper.updateOne({ _id: driver.shipper._id }, { $unset: { portrait: 1 } });
+        const res = await driver.api.post(`${S}/online`);
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('PORTRAIT_REQUIRED');
+
+        await multipart(driver.token).post(`${S}/profile/portrait`).attach('photo', PNG, { filename: 'me.png', contentType: 'image/png' }).expect(200);
+        await driver.api.post(`${S}/online`).expect(200);
+        // Đã duyệt + đã có ảnh: không tự đổi
+        await multipart(driver.token).post(`${S}/profile/portrait`).attach('photo', PNG, { filename: 'me2.png', contentType: 'image/png' }).expect(409);
+    });
+
+    it('ảnh chỉ khách / quán của đơn tài xế đó nhận, admin và chính tài xế xem được', async () => {
+        const driver = await makeShipper();
+        await multipart(driver.token).post(`${S}/profile/portrait`).attach('photo', PNG, { filename: 'me.png', contentType: 'image/png' }).expect(409);
+        // makeShipper chỉ có đường dẫn ảnh giả -> ghi file thật vào đúng chỗ để thử quyền xem
+        const fs = require('fs');
+        const path = require('path');
+        const { PRIVATE_DIR } = require('../../src/config/storage');
+        fs.mkdirSync(path.join(PRIVATE_DIR, 'shipper-portraits'), { recursive: true });
+        fs.writeFileSync(path.join(PRIVATE_DIR, 'shipper-portraits/test.png'), PNG);
+
+        const url = `/api/delivery/shippers/${driver.shipper.id}/portrait`;
+        const stranger = as((await createUserAndLogin()).token);
+        await customer.get(url).expect(404);
+        await owner.get(url).expect(404);
+        await stranger.get(url).expect(404);
+
+        const order = await placeAndAccept();
+        const offer = await openOffer(order.id);
+        await driver.api.post(`${S}/offers/${offer.id}/accept`).expect(200);
+
+        await customer.get(url).expect(200);
+        await owner.get(url).expect(200);
+        await admin.get(url).expect(200);
+        await driver.api.get(url).expect(200);
+        await stranger.get(url).expect(404);
+
+        const mine = await customer.get(`/api/orders/${order.id}`).expect(200);
+        expect(mine.body.data.delivery.shipperPortraitUrl).toBe(`/delivery/shippers/${driver.shipper.id}/portrait`);
+        const tracking = await customer.get(`/api/orders/${order.id}/tracking`).expect(200);
+        expect(tracking.body.data.shipper.portraitUrl).toBe(`/delivery/shippers/${driver.shipper.id}/portrait`);
     });
 });

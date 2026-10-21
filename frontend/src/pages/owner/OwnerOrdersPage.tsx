@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { getErrorMessage } from '../../api/client';
 import { merchantApi } from '../../api/merchant';
 import { useSocketEvent } from '../../context/SocketContext';
@@ -19,6 +19,16 @@ const TABS: { key: string; label: string; statuses: OrderStatus[] }[] = [
   { key: 'active', label: 'Đang làm', statuses: ['ACCEPTED', 'PREPARING', 'READY', 'DELIVERING'] },
   { key: 'done', label: 'Đã xong', statuses: ['COMPLETED', 'REJECTED', 'CANCELLED'] },
 ];
+
+// Lọc phụ trong tab "Đã xong" (22/10/2026) — xem lịch sử dễ hơn
+const DONE_FILTERS: { key: string; label: string; statuses: OrderStatus[] }[] = [
+  { key: 'all', label: 'Tất cả', statuses: ['COMPLETED', 'REJECTED', 'CANCELLED'] },
+  { key: 'completed', label: 'Hoàn thành', statuses: ['COMPLETED'] },
+  { key: 'cancelled', label: 'Đã hủy', statuses: ['CANCELLED'] },
+  { key: 'rejected', label: 'Đã từ chối', statuses: ['REJECTED'] },
+];
+/** Mỗi lần "Xem thêm" tải thêm bấy nhiêu đơn */
+const PAGE_SIZE = 30;
 
 const STATUS_TEXT: Record<OrderStatus, string> = {
   PENDING_PAYMENT: 'Chờ khách thanh toán',
@@ -81,7 +91,25 @@ const time = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString('vi-VN', 
 export default function OwnerOrdersPage() {
   const { restaurant, pendingCount, refreshPending } = useOwner();
   const notify = useToast();
-  const [tab, setTab] = useState(TABS[0]);
+  // Tab + lọc phụ nằm trên URL (/owner/orders?tab=done&filter=cancelled): tải lại / quay lại vẫn giữ đúng mục
+  const [params, setParams] = useSearchParams();
+  const tab = TABS.find(t => t.key === params.get('tab')) ?? TABS[0];
+  const doneFilter = DONE_FILTERS.find(f => f.key === params.get('filter')) ?? DONE_FILTERS[0];
+  const statuses = tab.key === 'done' ? doneFilter.statuses : tab.statuses;
+  const setTab = (t: (typeof TABS)[number]) => {
+    const next = new URLSearchParams(params);
+    if (t.key === TABS[0].key) next.delete('tab'); else next.set('tab', t.key);
+    next.delete('filter');
+    setParams(next, { replace: true });
+  };
+  const setDoneFilter = (key: string) => {
+    const next = new URLSearchParams(params);
+    if (key === 'all') next.delete('filter'); else next.set('filter', key);
+    setParams(next, { replace: true });
+  };
+  /** Số trang đã tải ("Xem thêm" tăng lên) */
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [orders, setOrders] = useState<MerchantOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -91,17 +119,27 @@ export default function OwnerOrdersPage() {
   const [reason, setReason] = useState<{ code: OwnerReasonCode; note: string }>({ code: 'OUT_OF_STOCK', note: '' });
   const [now, setNow] = useState(Date.now());
 
+  const statusKey = statuses.join(',');
+  // Tải lại trang 1 -> trang đang xem (giữ danh sách khi có đơn mới / đổi trạng thái)
   const load = useCallback(async () => {
     try {
-      const res = await merchantApi.listOrders({ status: tab.statuses, limit: 50 });
-      setOrders(res.items);
+      const results = await Promise.all(
+        Array.from({ length: pages }, (_, i) => merchantApi.listOrders({ status: statuses, page: i + 1, limit: PAGE_SIZE }))
+      );
+      const seen = new Set<string>();
+      setOrders(results.flatMap(r => r.items).filter(o => !seen.has(o.id) && seen.add(o.id)));
+      setTotal(results[0]?.total ?? 0);
       setError('');
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
-  }, [tab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusKey, pages]);
+
+  // Đổi tab / lọc -> về trang đầu
+  useEffect(() => { setPages(1); }, [statusKey]);
 
   useEffect(() => {
     setLoading(true);
@@ -191,13 +229,23 @@ export default function OwnerOrdersPage() {
         ))}
       </div>
 
+      {tab.key === 'done' && (
+        <div className="cat-tabs order-tabs order-filter" role="tablist" aria-label="Lọc đơn đã xong">
+          {DONE_FILTERS.map(f => (
+            <button key={f.key} role="tab" aria-selected={doneFilter.key === f.key} className={doneFilter.key === f.key ? 'active' : ''} onClick={() => setDoneFilter(f.key)}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {error ? (
         <div className="empty-state"><h2>Không tải được đơn</h2><p>{error}</p><button className="btn-soft" onClick={load}>Thử lại</button></div>
       ) : loading && orders.length === 0 ? (
         <div className="page-loading">Đang tải...</div>
       ) : orders.length === 0 ? (
         <div className="empty-state">
-          <h2>{tab.key === 'new' ? 'Chưa có đơn mới' : tab.key === 'active' ? 'Không có đơn đang làm' : 'Chưa có đơn nào'}</h2>
+          <h2>{tab.key === 'new' ? 'Chưa có đơn mới' : tab.key === 'active' ? 'Không có đơn đang làm' : doneFilter.key === 'all' ? 'Chưa có đơn nào' : `Không có đơn nào ở mục "${doneFilter.label}"`}</h2>
           {tab.key === 'new' && <p>Đơn mới sẽ hiện ngay ở đây kèm âm báo — nhớ bấm "Bật âm báo" ở trên.</p>}
         </div>
       ) : (
@@ -369,6 +417,14 @@ export default function OwnerOrdersPage() {
             );
           })}
         </ul>
+      )}
+
+      {!error && orders.length > 0 && orders.length < total && (
+        <div className="load-more">
+          <button className="btn-soft" onClick={() => { setLoading(true); setPages(p => p + 1); }} disabled={loading}>
+            {loading ? 'Đang tải...' : `Xem thêm (đang hiện ${orders.length}/${total})`}
+          </button>
+        </div>
       )}
     </>
   );

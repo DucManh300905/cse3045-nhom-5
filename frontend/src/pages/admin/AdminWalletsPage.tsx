@@ -4,6 +4,8 @@ import { getErrorMessage } from '../../api/client';
 import { walletApi } from '../../api/wallet';
 import { useSocketEvent } from '../../context/SocketContext';
 import { useToast } from '../../context/ToastContext';
+import { useBadges, useMarkSeen } from '../../context/BadgeContext';
+import { ADMIN_WALLET_TABS } from '../../utils/badges';
 import type { AdminWallet, BankPayment, BankPaymentStatus, Paginated, Payout, PayoutStatus, Refund, RestaurantRef, Topup, TopupStatus, WalletEntry, WalletOverview } from '../../types';
 import { formatDateTime, formatPrice } from '../../utils/format';
 import { BANK_PAYMENT_STATUS_LABEL, PAYOUT_STATUS_LABEL, REFUND_REASON_LABEL, TOPUP_STATUS_LABEL, WALLET_ENTRY_LABEL, WALLET_LOCK_LABEL } from '../../utils/labels';
@@ -28,6 +30,9 @@ export default function AdminWalletsPage() {
   const q = params.get('q') ?? '';
   const page = Number(params.get('page')) || 1;
   const [search, setSearch] = useState(q);
+  const { countOf } = useBadges();
+  // Mở tab nào thì thông báo của tab đó coi như đã xem
+  useMarkSeen(ADMIN_WALLET_TABS[tab]);
   const [overview, setOverview] = useState<WalletOverview | null>(null);
   const [wallets, setWallets] = useState<Paginated<AdminWallet> | null>(null);
   const [topups, setTopups] = useState<Paginated<Topup> | null>(null);
@@ -104,10 +109,11 @@ export default function AdminWalletsPage() {
 
   const tabs: [Tab, string, number?][] = [
     ['wallets', 'Ví các quán'],
-    ['topups', 'Nạp tiền chờ xác nhận', overview?.pendingTopups],
-    ['payouts', 'Yêu cầu rút', overview?.pendingPayouts.count],
-    ['refunds', 'Hoàn tiền cho khách', overview?.pendingRefunds.count],
-    ['payments', 'Giao dịch ngân hàng', overview?.unmatchedPayments],
+    // Số đỏ = thông báo chưa xem của tab (số việc đang chờ vẫn hiện ở các ô thống kê phía trên)
+    ['topups', 'Nạp tiền chờ xác nhận', countOf(ADMIN_WALLET_TABS.topups)],
+    ['payouts', 'Yêu cầu rút', countOf(ADMIN_WALLET_TABS.payouts)],
+    ['refunds', 'Hoàn tiền cho khách', countOf(ADMIN_WALLET_TABS.refunds)],
+    ['payments', 'Giao dịch ngân hàng', countOf(ADMIN_WALLET_TABS.payments)],
   ];
 
   const statusTabs: Record<Tab, [string, string][]> = {

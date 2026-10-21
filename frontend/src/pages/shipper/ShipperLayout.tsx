@@ -5,6 +5,7 @@ import { shipperApi } from '../../api/shipper';
 import Logo from '../../components/Logo';
 import NotificationBell from '../../components/NotificationBell';
 import { useAuth } from '../../context/AuthContext';
+import { MenuBadge, useMarkCurrentSeen } from '../../context/BadgeContext';
 import { useSocket, useSocketEvent } from '../../context/SocketContext';
 import { useToast } from '../../context/ToastContext';
 import type { ShipperProfile } from '../../types';
@@ -21,11 +22,11 @@ interface ShipperContext {
 export const useShipper = () => useOutletContext<ShipperContext>();
 
 const TABS = [
-  { to: '/shipper', label: 'Làm việc', end: true },
-  { to: '/shipper/shifts', label: 'Ca làm' },
+  { to: '/shipper', label: 'Làm việc', end: true, badge: 'work' },
+  { to: '/shipper/shifts', label: 'Ca làm', badge: 'shifts' },
   { to: '/shipper/history', label: 'Lịch sử' },
-  { to: '/shipper/earnings', label: 'Thu nhập' },
-  { to: '/shipper/profile', label: 'Hồ sơ' },
+  { to: '/shipper/earnings', label: 'Thu nhập', badge: 'earnings' },
+  { to: '/shipper/profile', label: 'Hồ sơ', badge: 'profile' },
   { to: '/shipper/account', label: 'Tài khoản' },
 ];
 
@@ -36,6 +37,8 @@ export default function ShipperLayout() {
   const notify = useToast();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  // Mở mục nào thì thông báo của mục đó coi như đã xem
+  useMarkCurrentSeen(pathname);
   const [profile, setProfileState] = useState<ShipperProfile | null | undefined>(undefined);
   const [error, setError] = useState('');
 
@@ -58,7 +61,7 @@ export default function ShipperLayout() {
           <Logo />
           <span className="portal-tag">Tài xế MAK</span>
           <nav className="header-actions">
-            {TABS.map(t => <NavLink key={t.to} to={t.to} end={t.end} className="nav-link">{t.label}</NavLink>)}
+            {TABS.map(t => <NavLink key={t.to} to={t.to} end={t.end} className="nav-link">{t.label}{t.badge && <MenuBadge k={t.badge} />}</NavLink>)}
             {profile && <span className={`status-chip s-${profile.status}`}>{SHIPPER_STATUS_LABEL[profile.status]}</span>}
             <span className={connected ? 'live-dot on' : 'live-dot'} title={connected ? 'Đang kết nối realtime' : 'Mất kết nối — đang thử lại'} aria-hidden />
             <NotificationBell />
@@ -72,7 +75,7 @@ export default function ShipperLayout() {
           </nav>
         </div>
         <nav className="container owner-tabs">
-          {TABS.map(t => <NavLink key={t.to} to={t.to} end={t.end}>{t.label}</NavLink>)}
+          {TABS.map(t => <NavLink key={t.to} to={t.to} end={t.end}>{t.label}{t.badge && <MenuBadge k={t.badge} />}</NavLink>)}
         </nav>
       </header>
 

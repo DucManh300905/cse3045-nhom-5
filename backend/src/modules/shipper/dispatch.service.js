@@ -340,12 +340,12 @@ const assignByAdmin = async ({ orderId, shipperId, actor, now = new Date() }) =>
         await DispatchOffer.updateMany({ order: current._id, status: 'OFFERED' }, { $set: { status: 'CANCELLED' } }, { session });
 
         const shipper = await Shipper.findOneAndUpdate(
-            { _id: shipperId, status: 'APPROVED', activeOrder: null },
+            { _id: shipperId, status: 'APPROVED', activeOrder: null, 'portrait.fileKey': { $exists: true } },
             { $set: { activeOrder: current._id } },
             { returnDocument: 'after', session }
         );
         if (!shipper) {
-            throw new AppError(409, 'SHIPPER_BUSY', 'Driver is not approved or is delivering another order');
+            throw new AppError(409, 'SHIPPER_BUSY', 'Driver is not approved, has no portrait or is delivering another order');
         }
 
         await DispatchOffer.create(

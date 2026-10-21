@@ -157,3 +157,28 @@ describe('API /notifications', () => {
         expect((await request(app).get('/api/notifications')).status).toBe(401);
     });
 });
+
+describe('Số thông báo chưa đọc theo loại (số đỏ trên menu)', () => {
+    it('đếm theo loại, đánh dấu đã đọc theo loại, không đụng thông báo người khác', async () => {
+        const me = await createUserAndLogin();
+        const other = await createUserAndLogin();
+        await Notification.insertMany([
+            { user: me.user.id, type: 'ORDER_STATUS', title: 'a' },
+            { user: me.user.id, type: 'ORDER_STATUS', title: 'b' },
+            { user: me.user.id, type: 'REFUND_DONE', title: 'c' },
+            { user: me.user.id, type: 'REFUND_DONE', title: 'd', isRead: true },
+            { user: other.user.id, type: 'ORDER_STATUS', title: 'e' }
+        ]);
+        const api = as;
+
+        const counts = await api(me.token).get('/api/notifications/unread-counts').expect(200);
+        expect(counts.body.data).toEqual({ total: 3, byType: { ORDER_STATUS: 2, REFUND_DONE: 1 } });
+
+        await api(me.token).patch('/api/notifications/read-types', { types: ['ORDER_STATUS'] }).expect(200);
+        await api(me.token).patch('/api/notifications/read-types', { types: ['KHONG_CO'] }).expect(400);
+        const after = await api(me.token).get('/api/notifications/unread-counts').expect(200);
+        expect(after.body.data).toEqual({ total: 1, byType: { REFUND_DONE: 1 } });
+        const theirs = await api(other.token).get('/api/notifications/unread-counts').expect(200);
+        expect(theirs.body.data.byType.ORDER_STATUS).toBe(1);
+    });
+});

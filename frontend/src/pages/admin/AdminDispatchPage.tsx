@@ -5,6 +5,7 @@ import { adminShipperApi } from '../../api/shipper';
 import { TrackMap } from '../../components/LazyMap';
 import type { TrackPoint } from '../../components/LocationPicker';
 import ProofPhoto from '../../components/ProofPhoto';
+import PrivateImage from '../../components/PrivateImage';
 import { useSocketEvent } from '../../context/SocketContext';
 import { useToast } from '../../context/ToastContext';
 import type { DispatchItem, OnlineShipper } from '../../types';
@@ -153,7 +154,7 @@ export default function AdminDispatchPage() {
                   <tr key={o.id} className={o.delivery.staleAlertAt ? 'row-blocked' : undefined}>
                     <td className="nowrap"><b>{o.code}</b></td>
                     <td className="nowrap">{DELIVERY_STATUS_LABEL[o.delivery.status]}{o.delivery.staleAlertAt && <><br /><small className="amount-neg">mất vị trí</small></>}</td>
-                    <td>{o.delivery.shipper ? <>{o.delivery.shipper.fullName}<br /><small>{o.delivery.shipper.licensePlate} · <a href={`tel:${o.delivery.shipper.phone}`}>{o.delivery.shipper.phone}</a></small></> : '—'}</td>
+                    <td>{o.delivery.shipper ? <>{o.delivery.shipperId && <PrivateImage url={`/delivery/shippers/${o.delivery.shipperId}/portrait`} alt="" className="driver-avatar photo small" />}{o.delivery.shipper.fullName}<br /><small>{o.delivery.shipper.licensePlate} · <a href={`tel:${o.delivery.shipper.phone}`}>{o.delivery.shipper.phone}</a></small></> : '—'}</td>
                     <td>{o.restaurant.name} → {o.dropoff.addressLine}</td>
                   </tr>
                 ))}

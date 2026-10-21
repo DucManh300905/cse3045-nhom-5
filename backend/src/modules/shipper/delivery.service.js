@@ -17,6 +17,7 @@ const { removeFile } = require('../../middlewares/upload.middleware');
 const { PRIVATE_DIR } = require('../../config/storage');
 const AppError = require('../../utils/AppError');
 const { fromPoint, toPoint, haversineKm } = require('../../utils/geo');
+const { portraitUrl } = require('./shipper.serializer');
 
 /**
  * Tài xế làm việc (Kế hoạch triển khai Tài xế mục 4, 6): trực tuyến / nghỉ, gửi vị trí,
@@ -53,6 +54,10 @@ const requireApproved = (shipper) => {
 
 const goOnline = async ({ shipper, lat, lng, now = new Date() }) => {
     requireApproved(shipper);
+    // Tài xế cũ chưa có ảnh chân dung: tải ảnh rồi mới trực tuyến (BR-104)
+    if (!shipper.portrait?.fileKey) {
+        throw new AppError(409, 'PORTRAIT_REQUIRED', 'Upload your portrait photo before going online');
+    }
     if (shipper.dispatchBlockedUntil && shipper.dispatchBlockedUntil > now) {
         throw new AppError(409, 'SHIPPER_DISPATCH_BLOCKED', 'You are temporarily locked from taking orders', [
             { field: 'dispatchBlockedUntil', until: shipper.dispatchBlockedUntil, reason: shipper.dispatchBlockReason }
@@ -387,7 +392,12 @@ const trackingOf = async (order) => {
         deliveryMode: order.deliveryMode ?? null,
         deliveryStatus: order.delivery?.status ?? null,
         shipper: order.delivery?.shipperSnapshot?.fullName
-            ? { ...order.delivery.shipperSnapshot, ratingAvg: shipper?.ratingAvg ?? null, ratingCount: shipper?.ratingCount ?? null }
+            ? {
+                  ...order.delivery.shipperSnapshot,
+                  ratingAvg: shipper?.ratingAvg ?? null,
+                  ratingCount: shipper?.ratingCount ?? null,
+                  portraitUrl: order.delivery.shipper ? portraitUrl(order.delivery.shipper) : null
+              }
             : null,
         location: shipper && fromPoint(shipper.location) ? { ...fromPoint(shipper.location), at: shipper.locationAt } : null,
         eta: holding ? (order.delivery.eta ?? null) : null,

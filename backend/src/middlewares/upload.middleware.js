@@ -122,6 +122,13 @@ const deliveryProofUpload = single(
     PROOF_MAX_SIZE
 );
 
+// Ảnh chân dung tài xế (private). Ảnh được thu nhỏ ở trình duyệt; vẫn cho tới 5MB.
+const shipperPortraitUpload = single(
+    createUploader({ dir: PRIVATE_DIR, subDir: 'shipper-portraits', allowedTypes: IMAGE_TYPES, maxSize: PROOF_MAX_SIZE }),
+    'photo',
+    PROOF_MAX_SIZE
+);
+
 // Xóa file cũ khi thay ảnh/giấy tờ; lỗi xóa không làm hỏng request
 const removeFile = (absolutePath) => {
     if (absolutePath) {
@@ -135,5 +142,6 @@ module.exports = {
     restaurantDocumentUpload,
     shipperDocumentUpload,
     deliveryProofUpload,
+    shipperPortraitUpload,
     removeFile
 };
