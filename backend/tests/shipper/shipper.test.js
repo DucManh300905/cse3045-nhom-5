@@ -131,13 +131,16 @@ describe('Hồ sơ tài xế', () => {
         const created = await driver.post(`${S}/profile`, { fullName: 'Tài Xế A', phone: '0911222333', vehicleType: 'MOTORBIKE', licensePlate: '29a-123.45' });
         expect(created.status).toBe(201);
         expect(created.body.data.licensePlate).toBe('29A-123.45');
+        // Đăng ký bằng email đã xác thực OTP -> mọi phản hồi hồ sơ đều báo đã xác thực (không hiện lại ô xác thực email)
+        expect(created.body.data.emailVerified).toBe(true);
 
         const incomplete = await driver.post(`${S}/profile/submit`);
         expect(incomplete.status).toBe(422);
         expect(incomplete.body.code).toBe('PROFILE_INCOMPLETE');
 
         for (const type of ['ID_CARD', 'DRIVER_LICENSE', 'VEHICLE_REGISTRATION']) {
-            await multipart(token).post(`${S}/profile/documents`).field('type', type).attach('file', PNG, { filename: `${type}.png`, contentType: 'image/png' }).expect(200);
+            const doc = await multipart(token).post(`${S}/profile/documents`).field('type', type).attach('file', PNG, { filename: `${type}.png`, contentType: 'image/png' }).expect(200);
+            expect(doc.body.data.emailVerified).toBe(true);
         }
         const submitted = await driver.post(`${S}/profile/submit`);
         expect(submitted.status).toBe(200);

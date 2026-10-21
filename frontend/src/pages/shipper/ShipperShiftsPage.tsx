@@ -205,7 +205,7 @@ export default function ShipperShiftsPage() {
   return (
     <div className="narrow-body">
       <h1 className="page-title">Ca làm · {list.area}</h1>
-      {!profile.emailVerified && <EmailVerifyPanel onDone={() => { reload(); load(); }} />}
+      {profile.emailVerified === false && <EmailVerifyPanel onDone={() => { reload(); load(); }} />}
       <PenaltyCard p={pen} />
 
       <p className="muted small">
