@@ -14,7 +14,7 @@ const {
 } = require('../../utils/validators');
 
 // Chỉ cho phép tự đăng ký hai vai trò này. ADMIN chỉ tạo bằng script seed.
-const SELF_REGISTER_ROLES = ['CUSTOMER', 'RESTAURANT_OWNER'];
+const SELF_REGISTER_ROLES = ['CUSTOMER', 'RESTAURANT_OWNER', 'SHIPPER'];
 
 const signToken = (user) =>
     jwt.sign(
@@ -70,6 +70,15 @@ const register = async (req, res) => {
                 success: false,
                 message: invalidPassword,
                 code: 'VALIDATION_ERROR'
+            });
+        }
+
+        // Tài xế bắt buộc email đã xác thực (lịch ca, cảnh cáo gửi qua email — BR-103)
+        if (role === 'SHIPPER' && !email) {
+            return res.status(400).json({
+                success: false,
+                message: 'Drivers must register with an email',
+                code: 'EMAIL_REQUIRED'
             });
         }
 

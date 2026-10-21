@@ -8,7 +8,17 @@ const { loadMyRestaurant } = require('../../middlewares/restaurant.middleware');
 const { paginationRules } = require('../../utils/pagination');
 const { ORDER_STATUSES } = require('./order.model');
 const { OWNER_REJECT_REASONS, OWNER_FORWARD } = require('./orderStateMachine');
-const { listOrders, getOrder, acceptOrder, rejectOrder, cancelOrder, updateStatus } = require('./order.merchant.controller');
+const {
+    listOrders,
+    getOrder,
+    acceptOrder,
+    rejectOrder,
+    cancelOrder,
+    updateStatus,
+    getTracking,
+    selfDeliver,
+    redispatchOrder
+} = require('./order.merchant.controller');
 
 // Mount tại /api/merchant/orders — chủ quán xử lý đơn của quán mình (docs/API.md mục 2.5).
 // Quán bị khóa vẫn xử lý được đơn đang dở (không nhận đơn mới vì đã tắt nhận đơn).
@@ -41,6 +51,9 @@ router.get(
 );
 
 router.get('/:id', [idRule], validate, getOrder);
+router.get('/:id/tracking', [idRule], validate, getTracking);
+router.post('/:id/self-deliver', [idRule], validate, selfDeliver);
+router.post('/:id/redispatch', [idRule], validate, redispatchOrder);
 router.post('/:id/accept', [idRule], validate, acceptOrder);
 router.post('/:id/reject', [idRule, ...reasonRules], validate, rejectOrder);
 router.post('/:id/cancel', [idRule, ...reasonRules], validate, cancelOrder);

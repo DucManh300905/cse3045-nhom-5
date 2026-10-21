@@ -24,7 +24,27 @@ const NOTIFICATION_TYPES = [
     'PAYMENT_ISSUE',
     'PAYMENT_UNMATCHED',
     'REFUND_REQUESTED',
-    'REFUND_DONE'
+    'REFUND_DONE',
+    // Tài xế MAK
+    'SHIPPER_SUBMITTED',
+    'SHIPPER_APPROVED',
+    'SHIPPER_REJECTED',
+    'SHIPPER_BLOCKED',
+    'SHIPPER_UNBLOCKED',
+    'DELIVERY_ASSIGNED',
+    'DELIVERY_NO_SHIPPER',
+    'DELIVERY_CANCELLED',
+    'DELIVERY_FAILED',
+    'DELIVERY_STALE',
+    'SHIPPER_EARNING',
+    // Đăng ký ca tài xế
+    'SHIFT_PLAN_REQUEST',
+    'SHIFT_LIST',
+    'SHIFT_REPORT',
+    'SHIFT_UNFILLED',
+    'SHIFT_REMINDER',
+    'SHIFT_CANCELLED',
+    'PENALTY'
 ];
 
 // Tự xóa sau 90 ngày
@@ -55,6 +75,7 @@ const notificationSchema = new mongoose.Schema(
         data: {
             orderId: mongoose.Schema.Types.ObjectId,
             restaurantId: mongoose.Schema.Types.ObjectId,
+            shipperId: mongoose.Schema.Types.ObjectId,
             code: String,
             link: String
         },

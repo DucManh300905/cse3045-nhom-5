@@ -1098,3 +1098,157 @@ fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; 
   .track li { font-size: 11px; }
 }
 .map-loading { display: grid; place-items: center; color: var(--muted); font-size: 13px; background: var(--chip); }
+
+/* ================= Tài xế MAK (app tài xế, theo dõi giao hàng, điều phối) ================= */
+.shipper-body { max-width: 720px; }
+.shipper-work { display: grid; gap: 16px; }
+.plain-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 14px; }
+.file-btn { cursor: pointer; }
+.small-note { font-size: 13px; margin: 10px 0 0; }
+.ok-note { color: var(--success); font-weight: 600; margin: 6px 0 0; font-size: 14px; }
+.empty-state.compact { padding: 32px 16px; }
+
+/* Ghim trên bản đồ: Q quán, K khách, 🛵 tài xế */
+.map-pin { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; font-weight: 800; font-size: 13px; color: #fff; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .3); flex-shrink: 0; }
+.map-pin.pin-store { background: var(--orange-dark); }
+.map-pin.pin-customer { background: var(--success); }
+.map-pin.pin-driver { background: #fff; font-size: 17px; border-color: var(--orange); }
+.track-map { margin-top: 10px; }
+
+.online-card { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 18px 20px; }
+.online-card > div { display: grid; min-width: 0; }
+.online-card small { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.online-card.is-online { background: var(--success-soft); }
+.online-card.is-online b { color: var(--success); }
+.online-card .btn-primary, .online-card .btn-outline { padding: 12px 22px; font-size: 15px; }
+
+.offer-card { border: 2px solid var(--orange); animation: fade-in .2s ease-out; }
+.offer-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.offer-head b { font-size: 17px; }
+.offer-fee { font-family: var(--display); font-size: 34px; font-weight: 800; color: var(--orange-deep); line-height: 1.2; margin: 4px 0 8px; }
+.offer-route { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.offer-route li { display: flex; gap: 10px; align-items: flex-start; }
+.offer-route li > div { display: grid; min-width: 0; }
+.offer-route small { color: var(--muted); font-size: 13px; }
+.offer-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 14px; }
+.offer-actions .btn-primary { padding: 13px 26px; font-size: 16px; }
+
+.active-order { display: grid; gap: 6px; }
+.trip-steps { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 12px; }
+.trip-steps li { display: grid; gap: 2px; padding: 12px 14px; border-radius: var(--radius-sm); border: 1.5px solid var(--line); opacity: .6; }
+.trip-steps li.current { opacity: 1; border-color: var(--orange); background: var(--orange-tint); }
+.trip-steps li.done { opacity: .55; text-decoration: line-through; }
+.trip-steps small { color: var(--muted); font-size: 13px; }
+.step-links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.step-links a { text-decoration: none; font-size: 14px; padding: 8px 14px; }
+.trip-items { margin-top: 6px; font-size: 14px; }
+.trip-items summary { cursor: pointer; font-weight: 600; }
+.trip-items ul { margin: 8px 0 0; padding-left: 18px; }
+
+.photo-modal { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: rgba(42, 27, 18, .55); }
+.photo-confirm { width: min(460px, 100%); display: grid; gap: 12px; }
+.photo-confirm img { width: 100%; max-height: 60vh; object-fit: contain; border-radius: var(--radius-sm); background: var(--chip); }
+
+/* Khối "Tài xế MAK" trong đơn (khách / chủ quán) */
+.delivery-box { display: grid; gap: 10px; margin: 12px 0; padding: 14px; border-radius: var(--radius-sm); background: var(--orange-tint); border: 1px solid var(--line); }
+.delivery-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.delivery-head .tag { margin-left: 0; background: var(--orange-soft); color: var(--orange-deep); }
+.delivery-status { font-size: 13px; font-weight: 700; color: var(--orange-deep); white-space: nowrap; }
+.delivery-status.d-NO_SHIPPER, .delivery-status.d-FAILED { color: var(--danger); }
+.delivery-status.d-DELIVERED { color: var(--success); }
+.driver-card { display: flex; align-items: center; gap: 12px; }
+.driver-card > div { display: grid; flex: 1; min-width: 0; }
+.driver-card small { color: var(--muted); font-size: 13px; }
+.driver-card .btn-soft { padding: 8px 14px; text-decoration: none; font-size: 14px; }
+.driver-avatar { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--card); font-size: 20px; box-shadow: var(--shadow-sm); flex-shrink: 0; }
+.rate-driver { display: grid; gap: 6px; }
+.rate-driver-row { display: flex; gap: 8px; }
+.rate-driver-row input { flex: 1; min-width: 0; }
+
+.proof-photo { margin: 0; display: grid; gap: 6px; max-width: 320px; }
+.proof-photo img { width: 100%; max-height: 260px; object-fit: cover; border-radius: var(--radius-sm); display: block; background: var(--chip); }
+.proof-photo figcaption { font-size: 12px; color: var(--muted); }
+.proof-placeholder { display: grid; place-items: center; height: 120px; border-radius: var(--radius-sm); background: var(--chip); color: var(--muted); font-size: 13px; }
+
+/* Hình thức giao (hồ sơ quán) */
+.delivery-mode { display: grid; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); max-width: 520px; }
+.delivery-mode-label { font-weight: 700; font-size: 14px; }
+
+/* Lịch sử chuyến + thu nhập */
+.trip-history { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.trip-history > li { padding: 0; overflow: hidden; }
+.trip-row { width: 100%; display: flex; justify-content: space-between; gap: 12px; padding: 14px 18px; background: none; border: 0; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.trip-row > div { display: grid; min-width: 0; }
+.trip-row small { color: var(--muted); font-size: 13px; }
+.trip-right { justify-items: end; text-align: right; }
+.trip-detail { padding: 0 18px 16px; display: grid; gap: 8px; }
+.earn { color: var(--success); }
+.entry-list { list-style: none; padding: 0; margin: 0; }
+.entry-list li { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.entry-list li > div { display: grid; min-width: 0; }
+.entry-list small { font-size: 13px; }
+.entry-list li > span { font-weight: 700; white-space: nowrap; }
+
+/* Điều phối (admin) */
+.dispatch-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.dispatch-list > li { display: flex; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1.5px solid var(--line); border-radius: var(--radius-sm); }
+.dispatch-main { display: grid; gap: 2px; min-width: 0; }
+.dispatch-main small { color: var(--muted); font-size: 13px; }
+.dispatch-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.dispatch-actions select { max-width: 220px; }
+
+@media (max-width: 640px) {
+  .online-card { flex-direction: column; align-items: stretch; text-align: center; }
+  .offer-actions > button { flex: 1; }
+  .dispatch-list > li { flex-direction: column; }
+  .dispatch-actions { justify-content: flex-start; }
+  .rate-driver-row { flex-direction: column; }
+}
+
+/* ================= Đăng ký ca tài xế (lịch giao của quán, ca làm của tài xế, ca theo ngày của admin) ================= */
+.segmented.three { grid-template-columns: repeat(3, 1fr); }
+.small-btn { padding: 6px 12px; font-size: 13px; }
+.danger-link { color: var(--danger); }
+.danger-tag { background: var(--danger-soft); color: var(--danger); }
+
+.windows-editor { display: grid; gap: 8px; }
+.window-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px; border: 1.5px solid var(--line); border-radius: var(--radius-sm); }
+.window-row > b { min-width: 150px; }
+.window-times { display: inline-flex; align-items: center; gap: 6px; }
+.window-times select { padding: 6px 8px; }
+.window-orders { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.window-orders input { width: 70px; padding: 6px 8px; }
+.window-row .link-btn { margin-left: auto; }
+.window-add { display: flex; gap: 8px; flex-wrap: wrap; }
+.shift-status { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 4px; font-size: 14px; }
+.shift-status li.warn { color: var(--danger); }
+.weekly-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.weekly-day { display: grid; gap: 8px; align-content: start; padding: 12px; border-radius: var(--radius-sm); background: var(--orange-tint); }
+
+.email-panel { border: 2px solid var(--amber); }
+.inline-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.inline-form input { flex: 1; min-width: 180px; }
+.penalty-card.level-0 { border-left: 4px solid var(--success); }
+.penalty-card.level-1, .penalty-card.level-2 { border-left: 4px solid var(--amber); }
+.penalty-card.level-3, .penalty-card.level-4 { border-left: 4px solid var(--danger); }
+.penalty-card details { margin-top: 8px; }
+.penalty-card summary { cursor: pointer; font-weight: 600; }
+
+.shift-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.shift-list > li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: var(--radius-sm); }
+.shift-list > li.mine { border-color: var(--success); background: var(--success-soft); }
+.shift-list > li > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.shift-list small { color: var(--muted); font-size: 13px; }
+.shift-list .tag { margin-left: 0; justify-self: start; }
+.shift-actions { flex-shrink: 0; }
+
+.date-nav { display: flex; gap: 6px; align-items: center; }
+.date-nav input { padding: 7px 10px; }
+.admin-shifts { display: grid; gap: 14px; }
+.shift-unfilled { border: 2px solid var(--danger); }
+
+@media (max-width: 640px) {
+  .segmented.three { grid-template-columns: 1fr; }
+  .shift-list > li { flex-direction: column; align-items: stretch; }
+  .window-row > b { min-width: 0; }
+}

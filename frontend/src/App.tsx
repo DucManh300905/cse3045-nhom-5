@@ -1,3 +1,4 @@
+import { lazy, Suspense, type ComponentType } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import RequireCustomer from './components/RequireCustomer';
 import RequireRole from './components/RequireRole';
@@ -20,6 +21,7 @@ import AdminRestaurantsPage from './pages/admin/AdminRestaurantsPage';
 import AdminReviewsPage from './pages/admin/AdminReviewsPage';
 import AdminWalletsPage from './pages/admin/AdminWalletsPage';
 import AdminVouchersPage from './pages/admin/AdminVouchersPage';
+
 import OwnerDashboardPage from './pages/owner/OwnerDashboardPage';
 import OwnerLayout from './pages/owner/OwnerLayout';
 import OwnerMenuPage from './pages/owner/OwnerMenuPage';
@@ -28,6 +30,24 @@ import OwnerProfilePage from './pages/owner/OwnerProfilePage';
 import OwnerReviewsPage from './pages/owner/OwnerReviewsPage';
 import OwnerWalletPage from './pages/owner/OwnerWalletPage';
 import OwnerVouchersPage from './pages/owner/OwnerVouchersPage';
+
+// Trang tài xế + điều phối: tải khi mở tới (khách không cần — giữ gói JS chính nhỏ, QUALITY Q3)
+const AdminShippersPage = lazy(() => import('./pages/admin/AdminShippersPage'));
+const AdminShipperDetailPage = lazy(() => import('./pages/admin/AdminShippersPage').then(m => ({ default: m.AdminShipperDetailPage })));
+const AdminDispatchPage = lazy(() => import('./pages/admin/AdminDispatchPage'));
+const ShipperLayout = lazy(() => import('./pages/shipper/ShipperLayout'));
+const ShipperHomePage = lazy(() => import('./pages/shipper/ShipperHomePage'));
+const ShipperHistoryPage = lazy(() => import('./pages/shipper/ShipperHistoryPage'));
+const ShipperEarningsPage = lazy(() => import('./pages/shipper/ShipperEarningsPage'));
+const ShipperProfilePage = lazy(() => import('./pages/shipper/ShipperProfilePage'));
+const ShipperShiftsPage = lazy(() => import('./pages/shipper/ShipperShiftsPage'));
+const AdminShiftsPage = lazy(() => import('./pages/admin/AdminShiftsPage'));
+const OwnerSchedulePage = lazy(() => import('./pages/owner/OwnerSchedulePage'));
+const page = (C: ComponentType) => (
+  <Suspense fallback={<div className="page-loading">Đang tải...</div>}>
+    <C />
+  </Suspense>
+);
 
 export default function App() {
   return (
@@ -56,6 +76,20 @@ export default function App() {
           <Route path="dashboard" element={<OwnerDashboardPage />} />
           <Route path="wallet" element={<OwnerWalletPage />} />
           <Route path="vouchers" element={<OwnerVouchersPage />} />
+          <Route path="schedule" element={page(OwnerSchedulePage)} />
+          <Route path="account" element={<StaffAccountPage />} />
+        </Route>
+      </Route>
+
+      {/* Tài xế MAK: web chạy trên điện thoại (/api/shipper/*) */}
+      <Route path="/shipper/login" element={<AuthPage portal="shipper" />} />
+      <Route element={<RequireRole role="SHIPPER" loginPath="/shipper/login" />}>
+        <Route path="/shipper" element={page(ShipperLayout)}>
+          <Route index element={page(ShipperHomePage)} />
+          <Route path="shifts" element={page(ShipperShiftsPage)} />
+          <Route path="history" element={page(ShipperHistoryPage)} />
+          <Route path="earnings" element={page(ShipperEarningsPage)} />
+          <Route path="profile" element={page(ShipperProfilePage)} />
           <Route path="account" element={<StaffAccountPage />} />
         </Route>
       </Route>
@@ -72,6 +106,10 @@ export default function App() {
           <Route path="reviews" element={<AdminReviewsPage />} />
           <Route path="wallets" element={<AdminWalletsPage />} />
           <Route path="vouchers" element={<AdminVouchersPage />} />
+          <Route path="shippers" element={page(AdminShippersPage)} />
+          <Route path="shippers/:id" element={page(AdminShipperDetailPage)} />
+          <Route path="dispatch" element={page(AdminDispatchPage)} />
+          <Route path="shifts" element={page(AdminShiftsPage)} />
           <Route path="account" element={<StaffAccountPage />} />
           <Route path="audit-logs" element={<AdminAuditLogsPage />} />
         </Route>

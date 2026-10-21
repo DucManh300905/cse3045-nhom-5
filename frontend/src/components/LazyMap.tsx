@@ -62,3 +62,17 @@ export function MiniMap(props: ComponentProps<typeof Mini>) {
     </MapErrorBoundary>
   );
 }
+
+const Track = lazy(() => import('./LocationPicker').then(m => ({ default: m.TrackMap })));
+
+/** Bản đồ theo dõi tài xế (quán, nơi giao, vị trí tài xế) */
+export function TrackMap(props: ComponentProps<typeof Track>) {
+  const height = props.height ?? 260;
+  return (
+    <MapErrorBoundary height={height}>
+      <Suspense fallback={<Loading height={height} />}>
+        <Track {...props} />
+      </Suspense>
+    </MapErrorBoundary>
+  );
+}

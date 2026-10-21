@@ -4,6 +4,7 @@ import { LogoMark } from '../components/Logo';
 const OPTIONS = [
   { to: '/menu', title: 'Khách hàng', text: 'Xem thực đơn, tìm món và đặt đồ ăn giao tận nơi.', primary: true },
   { to: '/owner', title: 'Chủ quán', text: 'Quản lý thực đơn, số suất mỗi ngày và đơn của quán.' },
+  { to: '/shipper', title: 'Tài xế', text: 'Nhận đơn giao quanh Hòa Lạc, xem thu nhập và rút tiền.' },
   { to: '/admin', title: 'Quản trị viên', text: 'Duyệt quán, quản lý người dùng và toàn hệ thống.' },
 ];
 

@@ -54,12 +54,35 @@ const getRoute = async (from, to) => {
     }
 };
 
+/**
+ * Quãng đường thật từ nhiều điểm (tài xế) tới một điểm (quán) — 1 lần gọi Goong cho cả danh sách.
+ * Lỗi / chưa có khóa / Goong không có đường cho một điểm -> ước lượng cho điểm đó.
+ * @returns [{ distanceKm, durationMinutes, source, provider }] cùng thứ tự origins
+ */
+const getMatrix = async (origins, destination) => {
+    if (origins.length === 0) {
+        return [];
+    }
+    const fallback = await estimate.getMatrix(origins, destination);
+    if (!useGoong()) {
+        return fallback;
+    }
+    try {
+        const rows = await goong.getMatrix(origins, destination);
+        return rows.map((row, i) => row ?? fallback[i]);
+    } catch (error) {
+        console.warn('[routing] Goong matrix failed, using estimate:', error.message);
+        return fallback;
+    }
+};
+
 /** Ô tìm địa chỉ trên bản đồ chỉ bật khi có khóa Goong */
 const searchAvailable = () => goong.isConfigured();
 
 module.exports = {
     providerName,
     getRoute,
+    getMatrix,
     searchAvailable,
     autocomplete: goong.autocomplete,
     placeDetail: goong.placeDetail,

@@ -317,7 +317,11 @@ export default function AdminWalletsPage() {
                   {payouts.items.map(p => (
                     <Fragment key={p.id}>
                       <tr>
-                        <td><Link to={`/admin/restaurants/${shopId(p.restaurant)}`} className="link-btn">{shopName(p.restaurant)}</Link></td>
+                        <td>
+                          {p.shipper
+                            ? <Link to={`/admin/shippers/${typeof p.shipper === 'string' ? p.shipper : p.shipper.id}`} className="link-btn">🛵 {typeof p.shipper === 'string' ? 'Tài xế' : p.shipper.fullName}</Link>
+                            : p.restaurant ? <Link to={`/admin/restaurants/${shopId(p.restaurant)}`} className="link-btn">{shopName(p.restaurant)}</Link> : '—'}
+                        </td>
                         <td className="num nowrap"><b>{formatPrice(p.amount)}</b></td>
                         <td>{p.bankAccount.bankName} · <span className="mono">{p.bankAccount.accountNumber}</span><br /><small className="muted">{p.bankAccount.accountName}</small></td>
                         <td className="nowrap">{formatDateTime(p.createdAt)}</td>

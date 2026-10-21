@@ -4,6 +4,7 @@ const Notification = require('./notification.model');
 const Restaurant = require('../restaurant/restaurant.model');
 const User = require('../user/user.model');
 const { emitNotification } = require('../../realtime/socket');
+const { sendMail } = require('../../config/mailer');
 const { TIME_ZONE } = require('../../utils/openingHours');
 
 // Tạo thông báo (lưu DB + đẩy realtime). Gọi SAU khi thao tác chính đã ghi xong;
@@ -21,7 +22,8 @@ const REASON_LABEL = {
     OTHER: 'Lý do khác',
     CUSTOMER_CHANGED_MIND: 'Khách đổi ý',
     TIMEOUT: 'Quán không phản hồi kịp',
-    PAYMENT_TIMEOUT: 'Quá hạn thanh toán'
+    PAYMENT_TIMEOUT: 'Quá hạn thanh toán',
+    DELIVERY_FAILED: 'Giao hàng không thành công'
 };
 
 // "Hết món: Hết gà"; hệ thống tự hủy đã có ghi chú đầy đủ ("Quán không phản hồi sau 5 phút") nên dùng luôn
@@ -70,6 +72,8 @@ const customerMessage = (order) => {
     const pickup = order.fulfillmentType === 'PICKUP';
 
     const prepaid = order.paymentMethod === 'BANK_TRANSFER';
+    const platform = order.deliveryMode === 'PLATFORM' && !pickup;
+    const driver = order.delivery?.shipperSnapshot?.fullName;
     const refundNote = order.paymentStatus === 'REFUND_PENDING' ? 'MAK sẽ hoàn tiền chuyển khoản cho bạn' : undefined;
 
     switch (order.status) {
@@ -88,13 +92,22 @@ const customerMessage = (order) => {
                 body: order.estimatedReadyAt ? `Đang chuẩn bị · dự kiến xong lúc ${clock(order.estimatedReadyAt)}` : 'Đang chuẩn bị'
             };
         case 'READY':
+            if (platform) {
+                return { title: `Món của đơn ${order.code} đã xong`, body: driver ? `Tài xế ${driver} đang tới quán lấy món` : 'MAK đang tìm tài xế giao cho bạn' };
+            }
             return {
                 title: pickup ? `Món của đơn ${order.code} đã xong` : `Đơn ${order.code} đã xong, quán sắp giao`,
                 body: pickup ? `Mời bạn đến ${shop} lấy món` : shop
             };
         case 'DELIVERING':
+            if (platform && driver) {
+                return { title: `Tài xế ${driver} đang giao đơn ${order.code}`, body: 'Mở "Đơn của tôi" để xem tài xế trên bản đồ' };
+            }
             return { title: `Đơn ${order.code} đang được giao đến bạn`, body: prepaid ? 'Đơn đã thanh toán trước' : `Chuẩn bị ${money(order.total)} tiền mặt` };
         case 'COMPLETED':
+            if (platform) {
+                return { title: `Đơn ${order.code} đã được giao`, body: 'Tài xế đã chụp ảnh xác nhận giao hàng. Bấm để xem và đánh giá', link: '/orders' };
+            }
             // Mời đánh giá quán (API-8): bấm vào mở thẳng phần đánh giá
             return {
                 title: pickup ? `Đơn ${order.code} đã hoàn thành` : `Đơn ${order.code} đã được giao`,
@@ -134,6 +147,18 @@ const orderStatusChanged = safely(async (order) => {
             type: 'ORDER_STATUS',
             title: last.actorType === 'CUSTOMER' ? `Khách đã hủy đơn ${order.code}` : `Đơn ${order.code} đã tự hủy`,
             body: last.actorType === 'SYSTEM' ? 'Quá thời gian chờ mà quán chưa nhận đơn' : order.cancelReason?.note,
+            data: { ...data, link: '/owner/orders' }
+        });
+    }
+
+    // Tài xế lấy hàng / giao xong -> chủ quán biết
+    if (last?.actorType === 'SHIPPER' && ['DELIVERING', 'COMPLETED'].includes(order.status)) {
+        const driver = order.delivery?.shipperSnapshot?.fullName ?? 'Tài xế';
+        list.push({
+            user: await ownerOf(order.restaurant),
+            type: 'ORDER_STATUS',
+            title: order.status === 'DELIVERING' ? `${driver} đã lấy đơn ${order.code}` : `${driver} đã giao xong đơn ${order.code}`,
+            body: order.status === 'COMPLETED' ? 'Tiền hàng đã cộng vào ví quán' : undefined,
             data: { ...data, link: '/owner/orders' }
         });
     }
@@ -289,21 +314,23 @@ const payoutRequested = safely(async (payout, restaurant) =>
             type: 'PAYOUT_REQUESTED',
             title: `${restaurant.name} yêu cầu rút ${money(payout.amount)}`,
             body: `${payout.bankAccount.bankName} · ${payout.bankAccount.accountNumber} · ${payout.bankAccount.accountName}`,
-            data: walletData(restaurant._id, '/admin/wallets?tab=payouts')
+            data: { restaurantId: restaurant._id, link: '/admin/wallets?tab=payouts' }
         }))
     )
 );
 
 const payoutProcessed = safely(async (payout) => {
-    const restaurant = await Restaurant.findById(payout.restaurant).select('owner').lean();
     const paid = payout.status === 'PAID';
+    // Lệnh rút của tài xế: báo tài khoản tài xế, mở trang Thu nhập
+    const shipper = payout.shipper ? await mongoose.model('Shipper').findById(payout.shipper).select('user').lean() : null;
+    const restaurant = shipper ? null : await Restaurant.findById(payout.restaurant).select('owner').lean();
     return notify([
         {
-            user: restaurant?.owner,
+            user: shipper?.user ?? restaurant?.owner,
             type: paid ? 'PAYOUT_PAID' : 'PAYOUT_REJECTED',
-            title: paid ? `MAK đã chuyển ${money(payout.amount)} cho quán` : `Yêu cầu rút ${money(payout.amount)} bị từ chối`,
+            title: paid ? `MAK đã chuyển ${money(payout.amount)} cho ${shipper ? 'bạn' : 'quán'}` : `Yêu cầu rút ${money(payout.amount)} bị từ chối`,
             body: paid ? (payout.bankRef ? `Mã giao dịch ${payout.bankRef}` : undefined) : `${payout.rejectReason} — tiền đã trả lại ví`,
-            data: walletData(payout.restaurant)
+            data: shipper ? { shipperId: payout.shipper, link: '/shipper/earnings' } : walletData(payout.restaurant)
         }
     ]);
 });
@@ -375,7 +402,197 @@ const paymentUnmatched = safely(async (payment, reason) =>
     )
 );
 
+// ======================= Tài xế MAK =======================
+
+const shipperData = (shipper, link) => ({ shipperId: shipper._id, link });
+const driverText = (order) => {
+    const s = order.delivery?.shipperSnapshot ?? {};
+    return [s.fullName, s.licensePlate, s.phone].filter(Boolean).join(' · ');
+};
+
+// Tài xế nộp hồ sơ -> mọi admin
+const shipperSubmitted = safely(async (shipper) =>
+    notify(
+        (await admins()).map((user) => ({
+            user,
+            type: 'SHIPPER_SUBMITTED',
+            title: `Hồ sơ tài xế mới cần duyệt: ${shipper.fullName}`,
+            body: [shipper.phone, shipper.licensePlate].filter(Boolean).join(' · ') || undefined,
+            data: shipperData(shipper, `/admin/shippers/${shipper._id}`)
+        }))
+    )
+);
+
+const SHIPPER_MESSAGES = {
+    APPROVED: () => ({ type: 'SHIPPER_APPROVED', title: 'Hồ sơ tài xế đã được duyệt', body: 'Bật "Trực tuyến" để bắt đầu nhận đơn' }),
+    REJECTED: (s) => ({ type: 'SHIPPER_REJECTED', title: 'Hồ sơ tài xế bị từ chối', body: s.rejectReason }),
+    BLOCKED: (s, note) => ({ type: 'SHIPPER_BLOCKED', title: 'Tài khoản tài xế đã bị khóa', body: note }),
+    UNBLOCKED: () => ({ type: 'SHIPPER_UNBLOCKED', title: 'Tài khoản tài xế đã được mở khóa', body: 'Bạn có thể bật "Trực tuyến" lại' })
+};
+
+/** Admin duyệt / từ chối / khóa / mở khóa -> tài xế. kind = APPROVED | REJECTED | BLOCKED | UNBLOCKED */
+const shipperStatusChanged = safely(async (shipper, kind, note) => {
+    const message = SHIPPER_MESSAGES[kind]?.(shipper, note);
+    return message ? notify([{ user: shipper.user?._id ?? shipper.user, ...message, data: shipperData(shipper, '/shipper/profile') }]) : [];
+});
+
+// Đã có tài xế nhận đơn -> khách + chủ quán (admin gán tay: báo thêm tài xế)
+const deliveryAssigned = safely(async (order, { byAdmin = false } = {}) => {
+    const data = { orderId: order._id, restaurantId: order.restaurant, code: order.code };
+    return notify([
+        ...(byAdmin
+            ? [
+                  {
+                      user: order.delivery?.shipperUser,
+                      type: 'DELIVERY_ASSIGNED',
+                      title: `MAK đã giao đơn ${order.code} cho bạn`,
+                      body: `Tới ${order.restaurantSnapshot?.name ?? 'quán'} lấy món · ${order.restaurantSnapshot?.address ?? ''}`.trim(),
+                      data: { ...data, link: '/shipper' }
+                  }
+              ]
+            : []),
+        {
+            user: order.customer,
+            type: 'DELIVERY_ASSIGNED',
+            title: `Đã có tài xế nhận đơn ${order.code}`,
+            body: driverText(order),
+            data: { ...data, link: '/orders' }
+        },
+        {
+            user: await ownerOf(order.restaurant),
+            type: 'DELIVERY_ASSIGNED',
+            title: `Tài xế đang tới lấy đơn ${order.code}`,
+            body: driverText(order),
+            data: { ...data, link: '/owner/orders' }
+        }
+    ]);
+});
+
+// Không tìm được tài xế -> chủ quán chọn tự giao / tìm lại / hủy (Q7)
+const deliveryNoShipper = safely(async (order) =>
+    notify([
+        {
+            user: await ownerOf(order.restaurant),
+            type: 'DELIVERY_NO_SHIPPER',
+            title: `Chưa tìm được tài xế cho đơn ${order.code}`,
+            body: 'Chọn "Tự giao đơn này", "Tìm lại tài xế" hoặc hủy đơn (khách được hoàn tiền tự động)',
+            data: { orderId: order._id, restaurantId: order.restaurant, code: order.code, link: '/owner/orders' }
+        }
+    ])
+);
+
+// Đơn tài xế đang nhận bị hủy / chuyển cho người khác -> tài xế
+const deliveryCancelled = safely(async (order, shipperUser, { compensation = 0, reason } = {}) =>
+    notify([
+        {
+            user: shipperUser,
+            type: 'DELIVERY_CANCELLED',
+            title: `Đơn ${order.code} không còn giao cho bạn`,
+            body: [reason, compensation ? `MAK bù ${money(compensation)} vào thu nhập` : null].filter(Boolean).join(' · ') || undefined,
+            data: { orderId: order._id, code: order.code, link: '/shipper' }
+        }
+    ])
+);
+
+// Tài xế báo giao thất bại -> admin xử lý, báo khách + quán
+const deliveryFailed = safely(async (order) => {
+    const data = { orderId: order._id, restaurantId: order.restaurant, code: order.code };
+    return notify([
+        ...(await admins()).map((user) => ({
+            user,
+            type: 'DELIVERY_FAILED',
+            title: `Giao thất bại đơn ${order.code}`,
+            body: order.delivery?.failReason,
+            data: { ...data, link: '/admin/dispatch' }
+        })),
+        {
+            user: order.customer,
+            type: 'DELIVERY_FAILED',
+            title: `Tài xế chưa giao được đơn ${order.code}`,
+            body: `${order.delivery?.failReason ?? ''} — MAK sẽ liên hệ bạn để xử lý`.trim(),
+            data: { ...data, link: '/orders' }
+        },
+        {
+            user: await ownerOf(order.restaurant),
+            type: 'DELIVERY_FAILED',
+            title: `Tài xế chưa giao được đơn ${order.code}`,
+            body: order.delivery?.failReason,
+            data: { ...data, link: '/owner/orders' }
+        }
+    ]);
+});
+
+// Tài xế mất tín hiệu khi đang giao -> admin
+const deliveryStale = safely(async (order, minutes) =>
+    notify(
+        (await admins()).map((user) => ({
+            user,
+            type: 'DELIVERY_STALE',
+            title: `Mất vị trí tài xế đơn ${order.code}`,
+            body: `${driverText(order)} — không cập nhật vị trí hơn ${minutes} phút`,
+            data: { orderId: order._id, code: order.code, link: '/admin/dispatch' }
+        }))
+    )
+);
+
+// Tiền công vừa cộng vào ví tài xế
+const shipperEarning = safely(async (order, shipperUser, amount) =>
+    notify([
+        {
+            user: shipperUser,
+            type: 'SHIPPER_EARNING',
+            title: `+${money(amount)} tiền công đơn ${order.code}`,
+            body: 'Đã cộng vào thu nhập, rút về tài khoản ở trang Thu nhập',
+            data: { orderId: order._id, code: order.code, link: '/shipper/earnings' }
+        }
+    ])
+);
+
+// ======================= Gửi kèm email (lịch ca tài xế) =======================
+
+const clientUrl = () => process.env.CLIENT_URL || 'http://localhost:5173';
+
+// Chỉ gửi tới email đã xác thực; lỗi gửi chỉ ghi log
+const emailUsers = async (docs) => {
+    const users = await User.find({ _id: { $in: docs.map((d) => d.user) }, emailVerified: true }).select('email').lean();
+    const byId = new Map(users.filter((u) => u.email).map((u) => [String(u._id), u.email]));
+    for (const doc of docs) {
+        const to = byId.get(String(doc.user));
+        if (!to) continue;
+        await sendMail({
+            to,
+            subject: `[MAK Food] ${doc.title}`,
+            text: [doc.body, doc.data?.link && `Mở MAK Food: ${clientUrl()}${doc.data.link}`].filter(Boolean).join('\n\n')
+        }).catch((error) => console.error('[notification] email failed:', error.message));
+    }
+};
+
+/**
+ * Thông báo tuỳ ý (dùng cho lịch ca / xử phạt): list = [{ user, type, title, body?, data? }].
+ * email: true -> gửi thêm email (các mốc lịch ca phải tới được người dùng kể cả khi không mở web).
+ */
+const send = safely(async (list, { email = false } = {}) => {
+    const docs = await notify(list);
+    if (email && docs.length) {
+        await emailUsers(docs);
+    }
+    return docs;
+});
+
+/** Id tài khoản của mọi admin đang hoạt động */
+const adminIds = () => admins();
+
 module.exports = {
+    send,
+    adminIds,
+    shipperSubmitted,
+    shipperStatusChanged,
+    deliveryAssigned,
+    deliveryNoShipper,
+    deliveryCancelled,
+    deliveryFailed,
+    deliveryStale,
+    shipperEarning,
     paymentProblem,
     refundCreated,
     refundDone,

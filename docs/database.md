@@ -335,6 +335,47 @@ Trạng thái được đổi trong cùng transaction với việc xác nhận �
 
 **`routecaches`** — bộ nhớ đệm định tuyến: `{ key (unique: 'goong|<xe>|<lat,lng 4 số>|<lat,lng 4 số>'), distanceKm, durationMinutes, polyline, provider, createdAt }`, TTL 7 ngày.
 
+### 3.14 Tài xế MAK: `shippers`, `dispatchoffers` + trường mới trên `orders`, `restaurants`, ví ✅ (21/10/2026)
+
+**`shippers`** — 1 hồ sơ / tài khoản `SHIPPER`: `user (unique)`, `fullName`, `phone`, `idNumber`, `vehicleType (MOTORBIKE│EBIKE│BICYCLE)`, `licensePlate`,
+`documents [{ type: ID_CARD│DRIVER_LICENSE│VEHICLE_REGISTRATION, fileKey (private), originalName, mimeType, uploadedAt }]`,
+`status (DRAFT│SUBMITTED│APPROVED│REJECTED│BLOCKED)`, `rejectReason`, `submittedAt`, `approvedAt`, `approvedBy`, `bankAccount`,
+trạng thái làm việc (ghi đè, không lưu hành trình): `isOnline`, `location` (GeoJSON, **2dsphere**), `locationAt`, `activeOrder` (1 đơn / tài xế), `dispatchBlockedUntil`,
+thống kê: `completedCount`, `ratingSum`, `ratingCount`, `ratingAvg`.
+
+**`dispatchoffers`** — lời mời nhận đơn: `{ order, shipper, distanceKm, durationMinutes (tài xế → quán), attempt, status (OFFERED│ACCEPTED│DECLINED│EXPIRED│CANCELLED│WITHDRAWN), offeredAt, expiresAt, respondedAt, assignedBy? }`.
+Index unique một phần `{ order }` khi `status = OFFERED` → mỗi đơn chỉ 1 lời mời đang chờ.
+
+**Thêm vào `orders`:** `deliveryMode (SELF│PLATFORM)`, `shipperFee`, và trong `delivery`: `status (SEARCHING│NO_SHIPPER│ASSIGNED│ARRIVED_AT_STORE│PICKED_UP│DELIVERED│FAILED)`,
+`shipper`, `shipperUser`, `shipperSnapshot { fullName, phone, vehicleType, licensePlate }`, `searchStartedAt`, `attempts`, `assignedAt`, `arrivedAt`, `pickedUpAt`, `deliveredAt`, `failedAt`, `failReason`,
+`proof { kind: DELIVERED│FAILED, fileKey, mimeType, takenAt }`, `eta { minutes, target: STORE│CUSTOMER, updatedAt }`, `staleAlertAt`, `rating { stars, comment, at }`.
+`statusHistory.actorType` thêm `SHIPPER`; `cancelReason.code` thêm `DELIVERY_FAILED`. Index `{ delivery.status, status }`, `{ delivery.shipper, createdAt }`.
+
+**Thêm vào `restaurants`:** `deliveryMode (SELF│PLATFORM, mặc định SELF)`. **`users.role`** thêm `SHIPPER`.
+
+**Ví:** loại ví `SHIPPER` (key `shipper:<id>`, trường `shipper`); `walletentries.kind` thêm `SHIPPER_FEE`, `SHIPPER_COMPENSATION`; `payouts` có `restaurant` **hoặc** `shipper`
+(index cũ `restaurant_1` thay bằng `one_pending_per_restaurant` + `one_pending_per_shipper` — chạy `npm run migrate:003` trên DB đã có dữ liệu).
+
+**File private mới:** `uploads/private/shipper-documents/` (giấy tờ tài xế), `uploads/private/delivery-proofs/` (ảnh xác nhận / giao thất bại).
+
+### 3.15 Đăng ký ca: `restaurantdayplans`, `shiftdays`, `shifts`, `shiftassignments`, `driverpenalties` ✅ (22/10/2026)
+
+**`restaurants`:** `deliveryMode` thêm `SCHEDULED`; `weeklySchedule [{ dayOfWeek, start, end, expectedOrders }]`.
+
+**`restaurantdayplans`** — lịch một ngày của quán: `{ restaurant, date 'YYYY-MM-DD', windows [{ start, end, expectedOrders }], source WEEKLY│ANSWER, answeredAt, lateCancels [{ start, end, at }] }`, unique `{ restaurant, date }`.
+
+**`shiftdays`** — mốc đã làm của một ngày (chạy lại an toàn): `{ area, date, askedAt, closedAt, reportedAt }`, unique `{ area, date }`.
+
+**`shifts`** — ca của khu vực: `{ area, date, start, end, startAt, endAt, kind FIXED│CUSTOM, label, restaurants [{ restaurant, name, address, expectedOrders }], expectedOrders, driversNeeded,
+status OPEN│LOCKED│RUNNING│DONE│CANCELLED, lockedAt, remindedAt, startedAt, check15At, check30At, endedAt }`, unique `{ area, date, start, end }`.
+
+**`shiftassignments`** — tài xế đăng ký ca: `{ shift, shipper, startAt, endAt (chép từ ca), status REGISTERED│ACTIVE│NO_SHOW│CANCELLED│LATE_CANCELLED│VOID, registeredAt, activeAt, cancelledAt }`;
+unique một phần `{ shift, shipper }` khi đang giữ (REGISTERED / ACTIVE).
+
+**`driverpenalties`** — lịch sử xử phạt: `{ shipper, kind VIOLATION│DECAY│WITHDRAW_LOCK│ADMIN_UNLOCK│ADMIN_UNBLOCK, reason NO_SHOW│LATE_CANCEL│WITHDRAWALS, fromLevel, toLevel, lockedUntil, shift, actor, note }`.
+
+**`shippers`** thêm: `penaltyLevel (0–4)`, `penaltyDecayAt`, `dispatchBlockReason (WITHDRAWALS│PENALTY)`, `consecutiveWithdrawals`. `auditlogs.actorRole` thêm `SHIPPER`; `notifications.type` thêm `SHIFT_*`, `PENALTY`.
+
 ---
 
 ## 4. Lưu file (không phải collection)

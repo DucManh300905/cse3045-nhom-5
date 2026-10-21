@@ -1,6 +1,7 @@
 import axios from 'axios';
 import client, { type ApiResponse } from './client';
 import type {
+  DeliveryMode,
   DocumentType,
   MenuItemType,
   MerchantCategory,
@@ -108,6 +109,12 @@ export const merchantApi = {
     return res.data.data;
   },
 
+  /** Nút chọn hình thức giao: quán tự giao / tài xế MAK (cần MAK đã bật chuyển khoản) */
+  async setDeliveryMode(deliveryMode: DeliveryMode) {
+    const res = await client.patch<ApiResponse<MerchantRestaurant>>('/merchant/restaurant/delivery-mode', { deliveryMode });
+    return res.data.data;
+  },
+
   // ---------- Danh mục ----------
 
   async listCategories() {
@@ -200,6 +207,18 @@ export const merchantApi = {
   /** PREPARING / READY / DELIVERING / COMPLETED theo luồng chuẩn */
   async advanceOrder(id: string, to: OrderStatus) {
     const res = await client.post<ApiResponse<MerchantOrder>>(`/merchant/orders/${id}/status`, { to });
+    return res.data.data;
+  },
+
+  /** Không tìm được tài xế MAK: quán tự giao đơn này */
+  async selfDeliver(id: string) {
+    const res = await client.post<ApiResponse<MerchantOrder>>(`/merchant/orders/${id}/self-deliver`);
+    return res.data.data;
+  },
+
+  /** Tìm lại tài xế MAK (lượt tìm mới) */
+  async redispatch(id: string) {
+    const res = await client.post<ApiResponse<MerchantOrder>>(`/merchant/orders/${id}/redispatch`);
     return res.data.data;
   },
 };

@@ -7,7 +7,11 @@ const FULFILLMENT_TYPES = ['DELIVERY', 'PICKUP'];
 // BANK_TRANSFER: khách chuyển khoản VietQR trước, webhook SePay tự xác nhận
 const PAYMENT_METHODS = ['COD', 'BANK_TRANSFER'];
 const PAYMENT_STATUSES = ['UNPAID', 'PAID', 'REFUND_PENDING', 'REFUNDED'];
-const CANCEL_REASONS = ['OUT_OF_STOCK', 'OVERLOADED', 'CLOSED', 'CUSTOMER_CHANGED_MIND', 'TIMEOUT', 'PAYMENT_TIMEOUT', 'OTHER'];
+const CANCEL_REASONS = ['OUT_OF_STOCK', 'OVERLOADED', 'CLOSED', 'CUSTOMER_CHANGED_MIND', 'TIMEOUT', 'PAYMENT_TIMEOUT', 'DELIVERY_FAILED', 'OTHER'];
+// SELF: quán tự giao · PLATFORM: tài xế MAK giao (chỉ đơn trả trước — BR-91)
+const DELIVERY_MODES = ['SELF', 'PLATFORM'];
+// Các bước của tài xế (đơn PLATFORM), tách khỏi status chính của đơn (BR-93)
+const DELIVERY_STATUSES = ['SEARCHING', 'NO_SHIPPER', 'ASSIGNED', 'ARRIVED_AT_STORE', 'PICKED_UP', 'DELIVERED', 'FAILED'];
 
 const money = {
     type: Number,
@@ -67,7 +71,7 @@ const statusHistorySchema = new mongoose.Schema(
         },
         actorType: {
             type: String,
-            enum: ['CUSTOMER', 'OWNER', 'ADMIN', 'SYSTEM'],
+            enum: ['CUSTOMER', 'OWNER', 'ADMIN', 'SYSTEM', 'SHIPPER'],
             required: true
         },
         actor: {
@@ -144,8 +148,68 @@ const orderSchema = new mongoose.Schema(
                     type: [Number],
                     default: undefined
                 }
+            },
+
+            // ---- Giao bằng tài xế MAK (deliveryMode = PLATFORM) ----
+            status: {
+                type: String,
+                enum: [...DELIVERY_STATUSES, null]
+            },
+            shipper: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'Shipper'
+            },
+            // Tài khoản người dùng của tài xế: phòng socket + kiểm tra quyền
+            shipperUser: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User'
+            },
+            // Khách / quán thấy để nhận ra tài xế
+            shipperSnapshot: {
+                fullName: String,
+                phone: String,
+                vehicleType: String,
+                licensePlate: String
+            },
+            searchStartedAt: Date,
+            // Số lời mời đã gửi trong lượt tìm hiện tại
+            attempts: Number,
+            assignedAt: Date,
+            arrivedAt: Date,
+            pickedUpAt: Date,
+            deliveredAt: Date,
+            failedAt: Date,
+            failReason: String,
+            // Ảnh xác nhận giao (Q8, chốt 21/10/2026) / ảnh giao thất bại — file private, xem qua API có kiểm quyền
+            proof: {
+                kind: { type: String, enum: ['DELIVERED', 'FAILED'] },
+                fileKey: String,
+                mimeType: String,
+                takenAt: Date
+            },
+            // Giờ đến dự kiến (tính lại tối đa mỗi phút theo vị trí tài xế)
+            eta: {
+                minutes: Number,
+                target: { type: String, enum: ['STORE', 'CUSTOMER'] },
+                updatedAt: Date
+            },
+            // Mất tín hiệu khi đang giao: đã báo admin lúc này (báo 1 lần)
+            staleAlertAt: Date,
+            // Khách đánh giá tài xế sau khi nhận hàng
+            rating: {
+                stars: { type: Number, min: 1, max: 5 },
+                comment: String,
+                at: Date
             }
         },
+
+        // SELF (quán tự giao) | PLATFORM (tài xế MAK) — chụp theo chế độ của quán lúc đặt
+        deliveryMode: {
+            type: String,
+            enum: DELIVERY_MODES
+        },
+        // Tiền công tài xế (MAK trả, khách vẫn miễn phí ship — Q3, Q4): tính lúc đặt từ route.distanceKm
+        shipperFee: { ...money, default: 0 },
 
         // Tuyến quán -> nơi nhận lúc đặt (BR-82): đường đi thật (ROUTING) hoặc ước lượng (ESTIMATE)
         route: {
@@ -261,6 +325,8 @@ orderSchema.index({ restaurant: 1, status: 1, createdAt: -1 });
 orderSchema.index({ status: 1, placedAt: 1 });
 orderSchema.index({ restaurant: 1, completedAt: -1 });
 orderSchema.index({ status: 1, paymentDeadline: 1 });
+orderSchema.index({ 'delivery.status': 1, status: 1 }, { sparse: true });
+orderSchema.index({ 'delivery.shipper': 1, createdAt: -1 }, { sparse: true });
 
 const Order = mongoose.model('Order', orderSchema);
 
@@ -270,3 +336,5 @@ module.exports.FULFILLMENT_TYPES = FULFILLMENT_TYPES;
 module.exports.PAYMENT_METHODS = PAYMENT_METHODS;
 module.exports.PAYMENT_STATUSES = PAYMENT_STATUSES;
 module.exports.CANCEL_REASONS = CANCEL_REASONS;
+module.exports.DELIVERY_MODES = DELIVERY_MODES;
+module.exports.DELIVERY_STATUSES = DELIVERY_STATUSES;

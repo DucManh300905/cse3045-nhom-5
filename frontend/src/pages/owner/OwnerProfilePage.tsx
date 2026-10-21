@@ -123,6 +123,43 @@ function StatusPanel() {
         )}
       </div>
 
+      {r.status !== 'BLOCKED' && (
+        <div className="delivery-mode">
+          <span className="delivery-mode-label">Hình thức giao hàng</span>
+          <div className="segmented three" role="radiogroup" aria-label="Hình thức giao hàng">
+            {([
+              ['SELF', 'Tự giao', 'Quán tự mang đơn đến khách, nhận cả tiền mặt và chuyển khoản'],
+              ['PLATFORM', 'Luôn dùng tài xế MAK', 'MAK tìm tài xế gần quán tới lấy và giao; đơn giao tận nơi phải chuyển khoản trước'],
+              ['SCHEDULED', 'Theo lịch', 'Tài xế MAK giao trong các khung giờ bạn xin và có tài xế đăng ký ca; ngoài khung quán tự giao'],
+            ] as const).map(([mode, label, hint]) => (
+              <button
+                key={mode}
+                type="button"
+                role="radio"
+                aria-checked={(r.deliveryMode ?? 'SELF') === mode}
+                className={(r.deliveryMode ?? 'SELF') === mode ? 'active' : ''}
+                disabled={busy}
+                title={hint}
+                onClick={() => {
+                  if ((r.deliveryMode ?? 'SELF') === mode) return;
+                  if (mode !== 'SELF' && !window.confirm('Dùng tài xế MAK?\nKhi tài xế MAK giao, khách đặt giao tận nơi phải chuyển khoản trước. Đơn đang làm dở không bị ảnh hưởng.')) return;
+                  run(() => merchantApi.setDeliveryMode(mode), { PLATFORM: 'Đơn giao tận nơi mới sẽ do tài xế MAK giao', SCHEDULED: 'Đã chuyển sang "Theo lịch" — đặt lịch ở trang Lịch giao', SELF: 'Quán tự giao đơn mới' }[mode]);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <small className="muted">
+            {(r.deliveryMode ?? 'SELF') === 'PLATFORM'
+              ? 'Nhận đơn xong MAK tự tìm tài xế; bạn bấm "Món đã xong" khi làm xong, tài xế tới lấy. Không tìm được tài xế thì bạn chọn tự giao đơn đó.'
+              : r.deliveryMode === 'SCHEDULED'
+                ? <>Xin tài xế theo khung giờ ở trang <Link to="/owner/schedule" className="link-btn">Lịch giao</Link>. Trong khung có tài xế, đơn giao tận nơi do tài xế MAK giao; ngoài khung bạn tự giao.</>
+                : 'Bạn tự giao đơn giao tận nơi. Chuyển sang "Tài xế MAK" nếu quán không có người giao.'}
+          </small>
+        </div>
+      )}
+
       {(r.status === 'DRAFT' || r.status === 'REJECTED') && (
         <div className="submit-row">
           <ul className="checklist">

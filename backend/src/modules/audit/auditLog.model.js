@@ -10,7 +10,7 @@ const auditLogSchema = new mongoose.Schema(
 
         actorRole: {
             type: String,
-            enum: ['CUSTOMER', 'RESTAURANT_OWNER', 'ADMIN', 'SYSTEM'],
+            enum: ['CUSTOMER', 'RESTAURANT_OWNER', 'ADMIN', 'SHIPPER', 'SYSTEM'],
             required: true
         },
 

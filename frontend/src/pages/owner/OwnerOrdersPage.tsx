@@ -8,6 +8,8 @@ import type { MerchantOrder, OrderStatus, OwnerReasonCode } from '../../types';
 import { formatPrice } from '../../utils/format';
 import { useOwner } from './OwnerLayout';
 import { directionsUrl, formatKm, fromPoint } from '../../utils/geo';
+import { stopChime } from '../../utils/chime';
+import DeliveryTracker from '../../components/DeliveryTracker';
 
 /** Đơn chờ quá thời gian này sẽ bị hệ thống tự hủy (BR-36, backend ORDER_TIMEOUT_MINUTES) */
 const TIMEOUT_MINUTES = 5;
@@ -53,6 +55,10 @@ const CANCEL_TEXT: Record<string, string> = {
 const nextStep = (o: MerchantOrder): { label: string; confirm?: string } | null => {
   const pickup = o.fulfillmentType === 'PICKUP';
   const paid = o.paymentMethod === 'BANK_TRANSFER';
+  // Tài xế MAK: quán chỉ báo làm xong, tài xế tự bấm lấy hàng / đã giao
+  if (o.deliveryMode === 'PLATFORM' && !pickup && o.nextStatus === 'READY') {
+    return { label: 'Món đã xong', confirm: `Đơn ${o.code} đã làm xong?\nTài xế MAK sẽ tới lấy và giao cho khách.` };
+  }
   switch (o.nextStatus) {
     case 'PREPARING':
       return { label: 'Bắt đầu làm' };
@@ -116,6 +122,12 @@ export default function OwnerOrdersPage() {
     load();
   });
   useSocketEvent('reconnected', () => load());
+  // Tài xế MAK: có tài xế nhận / không tìm được tài xế / tài xế tới quán...
+  useSocketEvent('delivery:changed', e => {
+    if (e.deliveryStatus === 'NO_SHIPPER') notify(`Đơn ${e.code}: chưa tìm được tài xế — chọn tự giao hoặc tìm lại`);
+    if (e.deliveryStatus === 'ARRIVED_AT_STORE') notify(`Đơn ${e.code}: tài xế ${e.shipper?.fullName ?? ''} đã tới quán`);
+    load();
+  });
 
   if (!restaurant) {
     return (
@@ -128,6 +140,8 @@ export default function OwnerOrdersPage() {
   }
 
   const act = async (o: MerchantOrder, fn: () => Promise<MerchantOrder>, ok: string) => {
+    // Chủ quán đã xử lý đơn -> tắt chuông đang kêu (file âm báo dài)
+    stopChime();
     setBusyId(o.id);
     try {
       await fn();
@@ -199,7 +213,9 @@ export default function OwnerOrdersPage() {
                     <span className={`status-chip s-${o.status === 'COMPLETED' ? 'APPROVED' : ['REJECTED', 'CANCELLED'].includes(o.status) ? 'REJECTED' : 'SUBMITTED'}`}>
                       {STATUS_TEXT[o.status]}
                     </span>
-                    <span className="tag muted-tag">{o.fulfillmentType === 'PICKUP' ? 'Tự đến lấy' : 'Giao tận nơi'}</span>
+                    <span className="tag muted-tag">
+                      {o.fulfillmentType === 'PICKUP' ? 'Tự đến lấy' : o.deliveryMode === 'PLATFORM' ? 'Tài xế MAK giao' : 'Giao tận nơi'}
+                    </span>
                   </div>
                   <small>
                     Đặt lúc {time(o.placedAt ?? o.createdAt)}
@@ -261,6 +277,8 @@ export default function OwnerOrdersPage() {
                   </div>
                 </div>
 
+                <DeliveryTracker order={o} viewer="owner" />
+
                 {o.cancelReason?.code && (
                   <p className="order-cancelled">
                     {CANCEL_TEXT[o.cancelReason.code] ?? o.cancelReason.code}{o.cancelReason.note && `: ${o.cancelReason.note}`}
@@ -311,6 +329,23 @@ export default function OwnerOrdersPage() {
                     )}
                     {['ACCEPTED', 'PREPARING', 'READY'].includes(o.status) && (
                       <button className="btn-outline danger-outline" disabled={busy} onClick={() => openReason(o.id, 'cancel')}>Hủy đơn</button>
+                    )}
+                    {o.deliveryMode === 'PLATFORM' && o.delivery?.status === 'NO_SHIPPER' && (
+                      <button className="btn-soft" disabled={busy} onClick={() => act(o, () => merchantApi.redispatch(o.id), `Đang tìm lại tài xế cho ${o.code}`)}>
+                        Tìm lại tài xế
+                      </button>
+                    )}
+                    {o.deliveryMode === 'PLATFORM' && ['SEARCHING', 'NO_SHIPPER'].includes(o.delivery?.status ?? '') && (
+                      <button
+                        className="btn-outline"
+                        disabled={busy}
+                        onClick={() => {
+                          if (!window.confirm(`Quán tự giao đơn ${o.code}? Đơn chuyển sang luồng quán tự giao, không dùng tài xế MAK nữa.`)) return;
+                          act(o, () => merchantApi.selfDeliver(o.id), `${o.code}: quán tự giao`);
+                        }}
+                      >
+                        Tự giao đơn này
+                      </button>
                     )}
                     {o.status !== 'PLACED' && o.nextStatus && (() => {
                       const step = nextStep(o);

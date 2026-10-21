@@ -104,6 +104,7 @@ export default function OwnerLayout() {
             <NavLink to="/owner/reviews" className="nav-link">Đánh giá</NavLink>
             <NavLink to="/owner/dashboard" className="nav-link">Thống kê</NavLink>
             <NavLink to="/owner/vouchers" className="nav-link">Voucher</NavLink>
+            {restaurant?.deliveryMode === 'SCHEDULED' && <NavLink to="/owner/schedule" className="nav-link">Lịch giao</NavLink>}
             <NavLink to="/owner/wallet" className="nav-link">Ví</NavLink>
             <NavLink to="/owner/account" className="nav-link">Tài khoản</NavLink>
             {restaurant && <span className={`status-chip s-${restaurant.status}`}>{STATUS_LABEL[restaurant.status]}</span>}
@@ -136,6 +137,7 @@ export default function OwnerLayout() {
           <NavLink to="/owner/reviews">Đánh giá</NavLink>
           <NavLink to="/owner/dashboard">Thống kê</NavLink>
           <NavLink to="/owner/vouchers">Voucher</NavLink>
+          {restaurant?.deliveryMode === 'SCHEDULED' && <NavLink to="/owner/schedule">Lịch giao</NavLink>}
           <NavLink to="/owner/wallet">Ví</NavLink>
           <NavLink to="/owner/account">Tài khoản</NavLink>
         </nav>

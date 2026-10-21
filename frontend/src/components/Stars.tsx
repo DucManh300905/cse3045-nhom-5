@@ -24,7 +24,7 @@ export function RatingBadge({ avg, count }: { avg: number; count: number }) {
 }
 
 /** Chọn 1–5 sao (bấm hoặc dùng phím mũi tên) */
-export function StarsInput({ value, onChange, disabled }: { value: number; onChange: (v: number) => void; disabled?: boolean }) {
+export function StarsInput({ value, onChange, disabled, labels = LABELS }: { value: number; onChange: (v: number) => void; disabled?: boolean; labels?: string[] }) {
   const [hover, setHover] = useState(0);
   const shown = hover || value;
   return (
@@ -35,7 +35,7 @@ export function StarsInput({ value, onChange, disabled }: { value: number; onCha
           type="button"
           role="radio"
           aria-checked={value === n}
-          aria-label={`${n} sao — ${LABELS[n]}`}
+          aria-label={`${n} sao — ${labels[n]}`}
           className={n <= shown ? 'on' : ''}
           disabled={disabled}
           onMouseEnter={() => setHover(n)}
@@ -44,7 +44,7 @@ export function StarsInput({ value, onChange, disabled }: { value: number; onCha
           ★
         </button>
       ))}
-      <span className="stars-label">{shown ? LABELS[shown] : 'Chọn số sao'}</span>
+      <span className="stars-label">{shown ? labels[shown] : 'Chọn số sao'}</span>
     </div>
   );
 }

@@ -23,6 +23,11 @@ const PORTALS = {
     registerTitle: 'Tạo tài khoản chủ quán', wrongRole: 'Tài khoản này không phải tài khoản chủ quán.',
     loginTitle: 'Kênh chủ quán', canRegister: true,
   },
+  shipper: {
+    role: 'SHIPPER' as Role, home: '/shipper', back: { to: '/', label: '← Về trang chủ' },
+    registerTitle: 'Đăng ký làm tài xế MAK', wrongRole: 'Tài khoản này không phải tài khoản tài xế.',
+    loginTitle: 'Tài xế MAK', canRegister: true,
+  },
   // Tài khoản admin tạo bằng `npm run seed:admin`, không tự đăng ký được
   admin: {
     role: 'ADMIN' as Role, home: '/admin', back: { to: '/', label: '← Về trang chủ' },
@@ -185,9 +190,13 @@ export default function AuthPage({ portal = 'customer' }: { portal?: keyof typeo
   const createAccount = async (contact: { email: string; verificationToken: string } | { phone: string }) => {
     setSubmitting(true);
     try {
-      await register({ fullName: reg.fullName.trim(), password: reg.password, role: cfg.role as 'CUSTOMER' | 'RESTAURANT_OWNER', ...contact });
+      await register({ fullName: reg.fullName.trim(), password: reg.password, role: cfg.role as 'CUSTOMER' | 'RESTAURANT_OWNER' | 'SHIPPER', ...contact });
       await signIn('email' in contact ? contact.email : contact.phone, reg.password);
-      notify(portal === 'owner' ? 'Tạo tài khoản thành công. Hãy tạo hồ sơ quán của bạn!' : 'Tạo tài khoản thành công. Chào mừng bạn đến MAK!');
+      notify(
+        portal === 'owner' ? 'Tạo tài khoản thành công. Hãy tạo hồ sơ quán của bạn!'
+          : portal === 'shipper' ? 'Tạo tài khoản thành công. Hãy hoàn thiện hồ sơ tài xế!'
+            : 'Tạo tài khoản thành công. Chào mừng bạn đến MAK!'
+      );
     } catch (err) {
       setError(getErrorMessage(err));
       setSubmitting(false);
@@ -336,13 +345,14 @@ export default function AuthPage({ portal = 'customer' }: { portal?: keyof typeo
                 <input value={reg.fullName} onChange={e => setField('fullName', e.target.value)} placeholder="Nguyễn Văn A" autoComplete="name" autoFocus />
               </label>
 
-              <div className="field">
+              {portal !== 'shipper' && <div className="field">
                 <span>Đăng ký bằng</span>
                 <div className="segmented">
                   <button type="button" className={method === 'email' ? 'active' : ''} onClick={() => { setMethod('email'); setError(''); }}>Email</button>
                   <button type="button" className={method === 'phone' ? 'active' : ''} onClick={() => { setMethod('phone'); setError(''); }}>Số điện thoại</button>
                 </div>
-              </div>
+              </div>}
+              {portal === 'shipper' && <small className="muted">Tài xế đăng ký bằng email (bắt buộc xác thực) để nhận lịch ca và thông báo.</small>}
 
               {method === 'email' ? (
                 <label>

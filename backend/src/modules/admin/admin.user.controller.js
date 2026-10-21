@@ -1,6 +1,8 @@
 const User = require('../user/user.model');
 const Restaurant = require('../restaurant/restaurant.model');
 const Order = require('../order/order.model');
+const Shipper = require('../shipper/shipper.model');
+const { withProofUrl } = require('../shipper/shipper.serializer');
 const { recordAudit } = require('../audit/audit.service');
 const { parseRange } = require('../report/report.service');
 const AppError = require('../../utils/AppError');
@@ -71,6 +73,10 @@ const setUserStatus = (status) =>
         if (status === 'BLOCKED' && user.role === 'RESTAURANT_OWNER') {
             await Restaurant.updateOne({ owner: user._id }, { $set: { isAcceptingOrders: false } });
         }
+        // Tài xế bị khóa tài khoản: không nhận lời mời nữa
+        if (status === 'BLOCKED' && user.role === 'SHIPPER') {
+            await Shipper.updateOne({ user: user._id }, { $set: { isOnline: false } });
+        }
 
         await recordAudit(req, {
             action: status === 'BLOCKED' ? 'USER_BLOCK' : 'USER_UNBLOCK',
@@ -104,7 +110,7 @@ const listOrders = asyncHandler(async (req, res) => {
         populate: { path: 'customer', select: 'fullName email phone' }
     });
 
-    return res.status(200).json({ success: true, data: result });
+    return res.status(200).json({ success: true, data: { ...result, items: result.items.map((o) => withProofUrl(o.toJSON())) } });
 });
 
 // GET /admin/orders/:id
@@ -115,7 +121,7 @@ const getOrder = asyncHandler(async (req, res) => {
         throw new AppError(404, 'NOT_FOUND', 'Order not found');
     }
 
-    return res.status(200).json({ success: true, data: order });
+    return res.status(200).json({ success: true, data: withProofUrl(order.toJSON()) });
 });
 
 module.exports = {

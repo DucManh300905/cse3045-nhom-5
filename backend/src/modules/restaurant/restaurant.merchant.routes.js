@@ -29,7 +29,8 @@ const {
     uploadImage,
     uploadDocument,
     submitRestaurant,
-    setAcceptingOrders
+    setAcceptingOrders,
+    setDeliveryMode
 } = require('./restaurant.merchant.controller');
 
 // Mount tại /api/merchant/restaurant — chỉ RESTAURANT_OWNER
@@ -149,6 +150,14 @@ router.patch(
     [body('isAcceptingOrders').isBoolean({ strict: true }).withMessage('isAcceptingOrders must be true or false').toBoolean()],
     validate,
     setAcceptingOrders
+);
+
+router.patch(
+    '/delivery-mode',
+    notBlocked,
+    [body('deliveryMode').isIn(['SELF', 'PLATFORM', 'SCHEDULED']).withMessage('deliveryMode must be SELF, PLATFORM or SCHEDULED')],
+    validate,
+    setDeliveryMode
 );
 
 module.exports = router;

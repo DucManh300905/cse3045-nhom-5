@@ -1,5 +1,7 @@
 const Order = require('./order.model');
-const { acceptByOwner, rejectByOwner, cancelByOwner, advanceByOwner } = require('./order.service');
+const { acceptByOwner, rejectByOwner, cancelByOwner, advanceByOwner, selfDeliverByOwner, redispatch } = require('./order.service');
+const { trackingOf } = require('../shipper/delivery.service');
+const { withProofUrl } = require('../shipper/shipper.serializer');
 const { nextOwnerStatus } = require('./orderStateMachine');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
@@ -8,10 +10,13 @@ const { getPagination, paginate } = require('../../utils/pagination');
 const CUSTOMER_FIELDS = 'fullName phone email';
 
 // Chủ quán thấy thêm thông tin khách + bước tiếp theo gợi ý cho nút bấm
-const toMerchantOrder = (order) => ({
-    ...order.toJSON(),
-    nextStatus: nextOwnerStatus(order)
-});
+const toMerchantOrder = (order) => {
+    const data = withProofUrl(order.toJSON());
+    if (data.delivery) {
+        delete data.delivery.shipperUser;
+    }
+    return { ...data, nextStatus: nextOwnerStatus(order) };
+};
 
 // GET /merchant/orders?status=PLACED,ACCEPTED&from=&to=&page=&limit=
 const listOrders = asyncHandler(async (req, res) => {
@@ -81,7 +86,27 @@ const updateStatus = asyncHandler(async (req, res) =>
     respond(res, 'Order status updated')(await advanceByOwner({ ...ctx(req), to: req.body.to }))
 );
 
+// GET /merchant/orders/:id/tracking — tài xế đang tới lấy / đang giao
+const getTracking = asyncHandler(async (req, res) => {
+    const order = await Order.findOne({ _id: req.params.id, restaurant: req.restaurant._id, placedAt: { $ne: null } });
+    if (!order) {
+        throw new AppError(404, 'NOT_FOUND', 'Order not found');
+    }
+    return res.status(200).json({ success: true, data: await trackingOf(order) });
+});
+
+// POST /merchant/orders/:id/self-deliver — không tìm được tài xế: quán tự giao đơn này (Q7)
+const selfDeliver = asyncHandler(async (req, res) => respond(res, 'Order switched to self-delivery')(await selfDeliverByOwner(ctx(req))));
+
+// POST /merchant/orders/:id/redispatch — tìm lại tài xế
+const redispatchOrder = asyncHandler(async (req, res) =>
+    respond(res, 'Searching for a driver')(await redispatch({ orderId: req.params.id, filter: { restaurant: req.restaurant._id } }))
+);
+
 module.exports = {
+    getTracking,
+    selfDeliver,
+    redispatchOrder,
     listOrders,
     getOrder,
     acceptOrder,

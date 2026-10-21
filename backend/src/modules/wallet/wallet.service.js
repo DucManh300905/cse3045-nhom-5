@@ -49,6 +49,13 @@ const restaurantLine = (restaurantId, amount) => ({
     amount
 });
 const systemLine = (name, amount) => ({ ...SYSTEM[name], amount });
+const shipperKey = (shipperId) => `shipper:${shipperId}`;
+const shipperLine = (shipperId, amount) => ({
+    key: shipperKey(shipperId),
+    type: 'SHIPPER',
+    shipper: shipperId,
+    amount
+});
 
 // ======================= Tài khoản nhận tiền của MAK (VietQR) =======================
 
@@ -99,7 +106,7 @@ const postJournal = async ({ ref, kind, lines, order, topup, payout, payment, re
     for (const line of nonZero) {
         const wallet = await Wallet.findOneAndUpdate(
             { key: line.key },
-            { $inc: { balance: line.amount }, $setOnInsert: { type: line.type, restaurant: line.restaurant } },
+            { $inc: { balance: line.amount }, $setOnInsert: { type: line.type, restaurant: line.restaurant, shipper: line.shipper } },
             { upsert: true, returnDocument: 'after', session }
         );
 
@@ -119,6 +126,7 @@ const postJournal = async ({ ref, kind, lines, order, topup, payout, payment, re
             wallet: wallet._id,
             walletType: wallet.type,
             restaurant: wallet.restaurant,
+            shipper: wallet.shipper,
             kind,
             amount: line.amount,
             balanceAfter: wallet.balance,
@@ -286,9 +294,75 @@ const settleOrder = async (order, session) => {
     );
 };
 
+// ======================= Tài xế MAK =======================
+
+/**
+ * Tiền công tài xế (Q4, chốt 21/10/2026): 10.000 đ cho 2 km đầu + 3.000 đ cho mỗi km tiếp theo
+ * (km lẻ tính tròn lên), theo quãng đường thật quán -> khách. Đọc env lúc gọi (test đổi được).
+ */
+const shipperSettings = () => ({
+    baseFee: Number(process.env.SHIPPER_BASE_FEE) || 10000,
+    baseKm: Number(process.env.SHIPPER_BASE_KM) || 2,
+    perKm: Number(process.env.SHIPPER_PER_KM) || 3000,
+    cancelCompensation: Number(process.env.SHIPPER_CANCEL_COMPENSATION) || 5000
+});
+
+const shipperFeeFor = (distanceKm) => {
+    const { baseFee, baseKm, perKm } = shipperSettings();
+    // Làm tròn 1 chữ số trước khi tính để 3.0000001 km không thành 2 km tiếp theo
+    const extraKm = Math.max(0, Math.ceil(Math.round(((distanceKm || 0) - baseKm) * 10) / 10));
+    return baseFee + extraKm * perKm;
+};
+
+/** Đơn tài xế MAK giao xong: MAK trả tiền công (khách miễn phí ship — Q3). Gọi trong transaction hoàn thành đơn. */
+const payShipperFee = (order, session) =>
+    postJournal(
+        {
+            ref: `SHIPPER_FEE:${order._id}`,
+            kind: 'SHIPPER_FEE',
+            order: order._id,
+            note: `Tiền công giao đơn ${order.code}${order.route?.distanceKm ? ` (${order.route.distanceKm} km)` : ''}`,
+            lines: [systemLine('PLATFORM', -order.shipperFee), shipperLine(order.delivery.shipper, order.shipperFee)]
+        },
+        session
+    );
+
+/** Đơn bị hủy khi tài xế đã nhận (chưa lấy hàng) -> MAK bù cho tài xế */
+const compensateShipper = (order, shipperId, session) => {
+    const amount = shipperSettings().cancelCompensation;
+    return postJournal(
+        {
+            ref: `SHIPPER_COMPENSATION:${order._id}:${shipperId}`,
+            kind: 'SHIPPER_COMPENSATION',
+            order: order._id,
+            note: `Bù chuyến đơn ${order.code} bị hủy khi tài xế đang tới quán`,
+            lines: [systemLine('PLATFORM', -amount), shipperLine(shipperId, amount)]
+        },
+        session
+    );
+};
+
 // ======================= Ví của quán =======================
 
 const toBankAccount = (r) => (r.bankAccount?.accountNumber ? r.bankAccount : null);
+
+// ======================= Ví của tài xế =======================
+
+const getShipperWallet = async (shipper) => {
+    const [wallet, pendingPayout] = await Promise.all([
+        Wallet.findOne({ key: shipperKey(shipper._id) }),
+        Payout.findOne({ shipper: shipper._id, status: 'REQUESTED' })
+    ]);
+    const balance = wallet?.balance ?? 0;
+    return {
+        balance,
+        available: Math.max(0, balance),
+        payoutMin: settings().payoutMin,
+        ...shipperSettings(),
+        bankAccount: toBankAccount(shipper),
+        pendingPayout
+    };
+};
 
 const withQr = (topup) =>
     topup && {
@@ -444,9 +518,16 @@ const rejectTopup = async ({ topupId, reason, actor }) => {
 
 // ---- Rút tiền ----
 
-const requestPayout = async ({ restaurant, userId, amount }) => {
+/**
+ * Yêu cầu rút tiền: owner = quán hoặc tài xế — cùng luồng, khác ví.
+ * Tiền chuyển ngay sang PAYOUT_HOLD, admin chuyển khoản rồi xác nhận.
+ */
+const requestPayoutFor = async ({ isShipper, owner, userId, amount }) => {
     const { payoutMin } = settings();
-    const bankAccount = toBankAccount(restaurant);
+    const bankAccount = toBankAccount(owner);
+    const ownerFilter = isShipper ? { shipper: owner._id } : { restaurant: owner._id };
+    const key = isShipper ? shipperKey(owner._id) : restaurantKey(owner._id);
+    const line = isShipper ? shipperLine : restaurantLine;
 
     if (!bankAccount) {
         throw new AppError(422, 'BANK_ACCOUNT_REQUIRED', 'Add a bank account before requesting a payout');
@@ -457,38 +538,34 @@ const requestPayout = async ({ restaurant, userId, amount }) => {
         ]);
     }
 
-    let posted;
     try {
         const payout = await inTransaction(async (session) => {
-            if (await Payout.exists({ restaurant: restaurant._id, status: 'REQUESTED' }).session(session)) {
+            if (await Payout.exists({ ...ownerFilter, status: 'REQUESTED' }).session(session)) {
                 throw new AppError(409, 'PAYOUT_PENDING', 'A payout request is already pending');
             }
 
             // Đọc số dư trong transaction: hai yêu cầu song song cùng $inc một ví -> một bên bị retry, đọc lại số mới
-            const wallet = await Wallet.findOne({ key: restaurantKey(restaurant._id) }).session(session);
+            const wallet = await Wallet.findOne({ key }).session(session);
             if ((wallet?.balance ?? 0) < amount) {
                 throw new AppError(422, 'INSUFFICIENT_BALANCE', 'Wallet balance is not enough');
             }
 
-            const [created] = await Payout.create(
-                [{ restaurant: restaurant._id, requestedBy: userId, amount, bankAccount }],
-                { session }
-            );
-            posted = await postJournal(
+            const [created] = await Payout.create([{ ...ownerFilter, requestedBy: userId, amount, bankAccount }], { session });
+            await postJournal(
                 {
                     ref: `PAYOUT_REQUEST:${created._id}`,
                     kind: 'PAYOUT_REQUEST',
                     payout: created._id,
                     actor: userId,
                     note: `Yêu cầu rút tiền về ${bankAccount.bankName} ${bankAccount.accountNumber}`,
-                    lines: [restaurantLine(restaurant._id, -amount), systemLine('PAYOUT_HOLD', amount)]
+                    lines: [line(owner._id, -amount), systemLine('PAYOUT_HOLD', amount)]
                 },
                 session
             );
             return created;
         });
 
-        await notifications.payoutRequested(payout, restaurant);
+        await notifications.payoutRequested(payout, isShipper ? { name: `Tài xế ${owner.fullName}` } : owner);
         return payout;
     } catch (error) {
         if (error?.code === 11000) {
@@ -497,6 +574,9 @@ const requestPayout = async ({ restaurant, userId, amount }) => {
         throw error;
     }
 };
+
+const requestPayout = ({ restaurant, userId, amount }) => requestPayoutFor({ isShipper: false, owner: restaurant, userId, amount });
+const requestShipperPayout = ({ shipper, userId, amount }) => requestPayoutFor({ isShipper: true, owner: shipper, userId, amount });
 
 // Admin xử lý yêu cầu rút: PAID (đã chuyển khoản) hoặc REJECTED (trả tiền lại ví quán)
 const processPayout = async ({ payoutId, status, bankRef, reason, actor }) => {
@@ -531,7 +611,10 @@ const processPayout = async ({ payoutId, status, bankRef, reason, actor }) => {
                 note: paid ? `Đã chuyển khoản${bankRef ? ` (GD ${bankRef})` : ''}` : `Từ chối rút tiền: ${reason}`,
                 lines: paid
                     ? [systemLine('PAYOUT_HOLD', -updated.amount), systemLine('EXTERNAL', updated.amount)]
-                    : [systemLine('PAYOUT_HOLD', -updated.amount), restaurantLine(updated.restaurant, updated.amount)]
+                    : [
+                          systemLine('PAYOUT_HOLD', -updated.amount),
+                          updated.shipper ? shipperLine(updated.shipper, updated.amount) : restaurantLine(updated.restaurant, updated.amount)
+                      ]
             },
             session
         );
@@ -596,6 +679,8 @@ const overview = async () => {
         owedToRestaurants: of('RESTAURANT').positive,
         owedByRestaurants: -of('RESTAURANT').negative,
         negativeRestaurants: of('RESTAURANT').negativeCount,
+        // Thu nhập tài xế chưa rút
+        owedToShippers: of('SHIPPER').positive,
         lockedRestaurants,
         pendingTopups,
         pendingPayouts: { count: pendingPayouts[0]?.count ?? 0, amount: pendingPayouts[0]?.amount ?? 0 },
@@ -618,8 +703,16 @@ module.exports = {
     platformBank,
     vietQrUrl,
     restaurantKey,
+    shipperKey,
+    shipperLine,
     postJournal,
     settleOrder,
+    shipperSettings,
+    shipperFeeFor,
+    payShipperFee,
+    compensateShipper,
+    getShipperWallet,
+    requestShipperPayout,
     afterPosting,
     syncWalletLock,
     syncAllWalletLocks,
