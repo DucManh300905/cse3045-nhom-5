@@ -11,6 +11,8 @@ const { removeAccents } = require('../../utils/text');
 const { toLocalParts } = require('../../utils/openingHours');
 const { getPagination, paginate, escapeRegex } = require('../../utils/pagination');
 const { isLatLng } = require('../../utils/geo');
+const { coveredWindowsOn, effectiveDeliveryMode } = require('../shift/shift.query');
+const { vnParts } = require('../../utils/vnTime');
 
 // ?lat=&lng= của người xem (để hiện khoảng cách); sai định dạng thì bỏ qua
 const viewerOf = (req) => (isLatLng(req.query) ? { lat: Number(req.query.lat), lng: Number(req.query.lng) } : undefined);
@@ -21,6 +23,13 @@ const SORTS = {
     name: { nameNoAccent: 1, _id: 1 },
     newest: { approvedAt: -1, _id: 1 }
 };
+
+// "Theo lịch": hình thức giao lúc này + các khung tài xế MAK giao hôm nay (BR-98) — trang quán + trang thanh toán
+const withDeliveryNow = async (restaurant, data) => ({
+    ...data,
+    deliveryModeNow: await effectiveDeliveryMode(restaurant),
+    ...(restaurant.deliveryMode === 'SCHEDULED' && { platformWindowsToday: await coveredWindowsOn(restaurant._id, vnParts().date) })
+});
 
 // Chỉ quán đã duyệt mới hiện với khách (BR-12)
 const findApprovedRestaurant = async (idOrSlug) => {
@@ -77,7 +86,7 @@ const getRestaurant = asyncHandler(async (req, res) => {
 
     return res.status(200).json({
         success: true,
-        data: toPublicRestaurantResponse(restaurant, viewerOf(req))
+        data: await withDeliveryNow(restaurant, toPublicRestaurantResponse(restaurant, viewerOf(req)))
     });
 });
 
@@ -98,7 +107,7 @@ const getRestaurantMenu = asyncHandler(async (req, res) => {
     return res.status(200).json({
         success: true,
         data: {
-            restaurant: toPublicRestaurantResponse(restaurant),
+            restaurant: await withDeliveryNow(restaurant, toPublicRestaurantResponse(restaurant)),
             categories: categories
                 .map((c) => ({ id: c._id, name: c.name, items: itemsByCategory.get(String(c._id)) }))
                 .filter((c) => c.items.length > 0)

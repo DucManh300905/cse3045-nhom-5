@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getErrorMessage } from '../../api/client';
 import { reportsApi } from '../../api/reports';
+import ProofPhoto from '../../components/ProofPhoto';
 import type { AdminOrder, OrderStatus, Paginated } from '../../types';
 import { formatDateTime, formatPrice } from '../../utils/format';
 
@@ -109,6 +110,13 @@ export default function AdminOrdersPage() {
                               {' · '}Hoa hồng {formatPrice(o.commissionAmount)} · {o.paymentStatus === 'PAID' ? 'Đã thu tiền' : 'Chưa thu tiền'}
                               {o.cancelReason?.code && ` · Lý do hủy: ${o.cancelReason.code}${o.cancelReason.note ? ` (${o.cancelReason.note})` : ''}`}
                             </p>
+                            {o.deliveryMode === 'PLATFORM' && o.delivery?.shipperSnapshot?.fullName && (
+                              <p className="muted small">
+                                Tài xế MAK: {o.delivery.shipperSnapshot.fullName} · {o.delivery.shipperSnapshot.licensePlate} · {o.delivery.shipperSnapshot.phone}
+                                {o.delivery.rating && ` · khách chấm ${o.delivery.rating.stars}★`}
+                              </p>
+                            )}
+                            {o.delivery?.proof && <ProofPhoto proof={o.delivery.proof} />}
                             <ol className="status-timeline">
                               {o.statusHistory.map((h, idx) => (
                                 <li key={idx}>{formatDateTime(h.at)} — {STATUS_TEXT[h.to]} <small className="muted">({h.actorType})</small></li>

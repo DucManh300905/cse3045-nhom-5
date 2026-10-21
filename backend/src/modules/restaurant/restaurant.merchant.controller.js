@@ -2,6 +2,7 @@ const path = require('path');
 
 const Restaurant = require('./restaurant.model');
 const notifications = require('../notification/notification.service');
+const payment = require('../payment/payment.service');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
 const { slugify } = require('../../utils/text');
@@ -234,7 +235,28 @@ const setAcceptingOrders = asyncHandler(async (req, res) => {
     });
 });
 
+// PATCH /merchant/restaurant/delivery-mode { deliveryMode: SELF | PLATFORM } — nút chọn hình thức giao (Q1)
+// Tài xế MAK chỉ nhận đơn trả trước -> cần MAK đã bật chuyển khoản (SePay)
+const setDeliveryMode = asyncHandler(async (req, res) => {
+    const { restaurant } = req;
+    const { deliveryMode } = req.body;
+
+    if (deliveryMode !== 'SELF' && !payment.isBankTransferEnabled()) {
+        throw new AppError(422, 'PAYMENT_METHOD_UNAVAILABLE', 'MAK drivers need bank transfer payments, which are not enabled yet');
+    }
+
+    restaurant.deliveryMode = deliveryMode;
+    await restaurant.save();
+
+    return res.status(200).json({
+        success: true,
+        message: { PLATFORM: 'Delivery by MAK drivers', SCHEDULED: 'MAK drivers on schedule', SELF: 'Self-delivery' }[deliveryMode],
+        data: toRestaurantResponse(restaurant)
+    });
+});
+
 module.exports = {
+    setDeliveryMode,
     REQUIRED_DOCUMENTS,
     createRestaurant,
     getMyRestaurant,

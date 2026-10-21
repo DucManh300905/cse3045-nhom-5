@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
 import iconUrl from 'leaflet/dist/images/marker-icon.png';
 import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
-import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import { geoApi, type PlaceSuggestion } from '../api/geo';
 import { getErrorMessage } from '../api/client';
 import { currentPosition, directionsUrl, HOA_LAC, sameSpot, type LatLng } from '../utils/geo';
@@ -212,6 +212,57 @@ export function MiniMap({ point, height = 180 }: { point: LatLng; height?: numbe
       <MapContainer center={[point.lat, point.lng]} zoom={16} scrollWheelZoom={false} dragging={false} zoomControl={false} style={{ height: '100%' }}>
         <TileLayer url={TILE_URL} attribution={ATTRIBUTION} />
         <Marker position={[point.lat, point.lng]} />
+      </MapContainer>
+    </div>
+  );
+}
+
+// ======================= Bản đồ theo dõi giao hàng (tài xế MAK) =======================
+
+export interface TrackPoint {
+  lat: number;
+  lng: number;
+  kind: 'store' | 'customer' | 'driver';
+  label?: string;
+}
+
+const PIN_TEXT: Record<TrackPoint['kind'], string> = { store: 'Q', customer: 'K', driver: '🛵' };
+const pinIcon = (kind: TrackPoint['kind']) =>
+  L.divIcon({ className: '', html: `<span class="map-pin pin-${kind}">${PIN_TEXT[kind]}</span>`, iconSize: [30, 30], iconAnchor: [15, 15] });
+
+/** Khung nhìn ôm vừa các điểm lần đầu; sau đó chỉ đi theo tài xế khi tài xế ra khỏi khung */
+function FitPoints({ points }: { points: TrackPoint[] }) {
+  const map = useMap();
+  const fitted = useRef(false);
+  useEffect(() => {
+    if (points.length === 0) return;
+    if (!fitted.current) {
+      fitted.current = true;
+      if (points.length === 1) map.setView([points[0].lat, points[0].lng], 16);
+      else map.fitBounds(L.latLngBounds(points.map(p => [p.lat, p.lng] as [number, number])), { padding: [30, 30], maxZoom: 17 });
+      return;
+    }
+    const driver = points.find(p => p.kind === 'driver');
+    if (driver && !map.getBounds().contains([driver.lat, driver.lng])) map.panTo([driver.lat, driver.lng]);
+  }, [map, points]);
+  return null;
+}
+
+/**
+ * Bản đồ theo dõi: quán (Q), nơi giao (K), tài xế (🛵) + tuyến đường quán -> khách (nếu có).
+ * Chỉ xem, không ghim. path: danh sách [lat, lng] đã giải mã.
+ */
+export function TrackMap({ points, path, height = 260 }: { points: TrackPoint[]; path?: [number, number][]; height?: number }) {
+  const first = points[0] ?? { ...HOA_LAC };
+  return (
+    <div className="location-map track-map" style={{ height }}>
+      <MapContainer center={[first.lat, first.lng]} zoom={15} scrollWheelZoom style={{ height: '100%' }}>
+        <TileLayer url={TILE_URL} attribution={ATTRIBUTION} />
+        <FitPoints points={points} />
+        {path && path.length > 1 && <Polyline positions={path} pathOptions={{ color: '#d4540c', weight: 4, opacity: 0.7 }} />}
+        {points.map((p, i) => (
+          <Marker key={`${p.kind}-${i}`} position={[p.lat, p.lng]} icon={pinIcon(p.kind)} title={p.label} />
+        ))}
       </MapContainer>
     </div>
   );

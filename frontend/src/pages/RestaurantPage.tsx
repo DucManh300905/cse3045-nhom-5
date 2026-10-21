@@ -107,6 +107,17 @@ export default function RestaurantPage() {
               <li><small>Địa chỉ</small><b>{restaurant.address}</b></li>
               <li><small>Giờ mở cửa</small><b>{todayHours(restaurant)}</b></li>
               {restaurant.deliveryRadiusKm !== undefined && <li><small>Phạm vi giao</small><b>Trong {restaurant.deliveryRadiusKm} km</b></li>}
+              {restaurant.deliveryMode === 'PLATFORM' && <li><small>Giao hàng</small><b>Tài xế MAK (chuyển khoản trước)</b></li>}
+              {restaurant.deliveryMode === 'SCHEDULED' && (
+                <li>
+                  <small>Giao hàng</small>
+                  <b>
+                    {restaurant.platformWindowsToday?.length
+                      ? `Tài xế MAK ${restaurant.platformWindowsToday.map(w => `${w.start}–${w.end}`).join(', ')} (chuyển khoản trước), giờ khác quán tự giao`
+                      : 'Quán tự giao'}
+                  </b>
+                </li>
+              )}
               <li><small>Giao hàng</small><b>Quán tự giao · Miễn phí</b></li>
               <li><small>Đơn tối thiểu</small><b>{restaurant.minOrderAmount ? formatPrice(restaurant.minOrderAmount) : 'Không'}</b></li>
               <li>

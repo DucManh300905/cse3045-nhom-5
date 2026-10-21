@@ -2,17 +2,24 @@ const Order = require('./order.model');
 const User = require('../user/user.model');
 const { placeOrder, previewOrder, cancelByCustomer } = require('./order.service');
 const { orderPaymentInfo } = require('../payment/payment.service');
+const { trackingOf, rateShipper } = require('../shipper/delivery.service');
+const { withProofUrl } = require('../shipper/shipper.serializer');
 const { toPoint, fromPoint, isLatLng } = require('../../utils/geo');
 const AppError = require('../../utils/AppError');
 const asyncHandler = require('../../utils/asyncHandler');
 const { getPagination, paginate } = require('../../utils/pagination');
 
-// Khách không thấy số liệu nội bộ (hoa hồng)
+// Khách không thấy số liệu nội bộ (hoa hồng, tiền công tài xế)
 const toCustomerOrder = (order) => {
-    const data = order.toJSON();
+    const data = withProofUrl(order.toJSON());
 
     delete data.commissionRate;
     delete data.commissionAmount;
+    delete data.shipperFee;
+    if (data.delivery) {
+        delete data.delivery.shipperUser;
+        delete data.delivery.staleAlertAt;
+    }
 
     return data;
 };
@@ -119,6 +126,9 @@ const preview = asyncHandler(async (req, res) => {
             // Giao tận nơi đã có vị trí: quãng đường + thời gian (null nếu chưa ghim / quán chưa có vị trí)
             route: draft.route ?? null,
             estimatedDeliveryMinutes: draft.estimatedDeliveryMinutes ?? null,
+            // Quán giao bằng tài xế MAK: chỉ nhận chuyển khoản trước (BR-91)
+            deliveryMode: draft.deliveryMode,
+            prepaidRequired: draft.prepaidRequired,
             total: draft.total
         }
     });
@@ -193,6 +203,21 @@ const getMyOrderPayment = asyncHandler(async (req, res) => {
     return res.status(200).json({ success: true, data: orderPaymentInfo(order) });
 });
 
+// GET /orders/:id/tracking — tài xế, vị trí (khi đang giao), giờ đến dự kiến
+const getMyOrderTracking = asyncHandler(async (req, res) => {
+    const order = await Order.findOne({ _id: req.params.id, customer: req.user.userId });
+    if (!order) {
+        throw new AppError(404, 'NOT_FOUND', 'Order not found');
+    }
+    return res.status(200).json({ success: true, data: await trackingOf(order) });
+});
+
+// POST /orders/:id/shipper-rating { stars, comment? }
+const rateMyShipper = asyncHandler(async (req, res) => {
+    const order = await rateShipper({ userId: req.user.userId, orderId: req.params.id, stars: req.body.stars, comment: req.body.comment });
+    return res.status(200).json({ success: true, message: 'Thanks for rating your driver', data: toCustomerOrder(order) });
+});
+
 // POST /orders/:id/cancel { note? } — khi PENDING_PAYMENT hoặc PLACED (BR-35)
 const cancelMyOrder = asyncHandler(async (req, res) => {
     const order = await cancelByCustomer({
@@ -214,5 +239,7 @@ module.exports = {
     listMyOrders,
     getMyOrder,
     getMyOrderPayment,
+    getMyOrderTracking,
+    rateMyShipper,
     cancelMyOrder
 };

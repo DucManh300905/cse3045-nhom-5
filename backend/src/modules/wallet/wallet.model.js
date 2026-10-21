@@ -10,12 +10,13 @@ const mongoose = require('mongoose');
  *                 (nạp: −, chi trả cho quán: +) -> tiền thật MAK đang giữ = −balance
  *   ESCROW      : tiền khách trả trước đang giữ, chờ đơn hoàn thành (W2 — VietQR)
  *   REFUND_HOLD : tiền MAK phải hoàn cho khách (đơn đã trả bị hủy, chuyển muộn / thiếu / thừa)
+ *   SHIPPER     : thu nhập tài xế MAK chưa rút (tiền công giao đơn, tiền bù khi đơn bị hủy)
  */
-const WALLET_TYPES = ['RESTAURANT', 'PLATFORM', 'PAYOUT_HOLD', 'EXTERNAL', 'ESCROW', 'REFUND_HOLD'];
+const WALLET_TYPES = ['RESTAURANT', 'PLATFORM', 'PAYOUT_HOLD', 'EXTERNAL', 'ESCROW', 'REFUND_HOLD', 'SHIPPER'];
 
 const walletSchema = new mongoose.Schema(
     {
-        // 'PLATFORM', 'EXTERNAL'... hoặc 'restaurant:<id>'
+        // 'PLATFORM', 'EXTERNAL'... hoặc 'restaurant:<id>' / 'shipper:<id>'
         key: {
             type: String,
             required: true,
@@ -31,6 +32,11 @@ const walletSchema = new mongoose.Schema(
         restaurant: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Restaurant'
+        },
+
+        shipper: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Shipper'
         },
 
         // Số nguyên VND. Chỉ đổi qua wallet.service.postJournal

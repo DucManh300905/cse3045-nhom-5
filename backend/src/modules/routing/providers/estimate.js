@@ -18,8 +18,11 @@ const getRoute = async (from, to) => {
     };
 };
 
+const getMatrix = async (origins, destination) => Promise.all(origins.map((o) => getRoute(o, destination)));
+
 module.exports = {
     name: 'estimate',
+    getMatrix,
     ROAD_FACTOR,
     SPEED_KMH,
     getRoute

@@ -10,7 +10,9 @@ const ENTRY_KINDS = [
     'ADJUSTMENT', // admin điều chỉnh tay (bắt buộc lý do + audit log)
     'ORDER_PAYMENT', // tiền khách chuyển về (webhook SePay): EXTERNAL -> ESCROW / REFUND_HOLD
     'REFUND_PENDING', // đơn đã trả bị hủy: ESCROW -> REFUND_HOLD
-    'REFUND_PAID' // admin đã hoàn tiền: REFUND_HOLD -> EXTERNAL
+    'REFUND_PAID', // admin đã hoàn tiền: REFUND_HOLD -> EXTERNAL
+    'SHIPPER_FEE', // đơn tài xế MAK giao xong: PLATFORM -> ví tài xế
+    'SHIPPER_COMPENSATION' // đơn bị hủy khi tài xế đã nhận: MAK bù cho tài xế
 ];
 
 const walletEntrySchema = new mongoose.Schema(
@@ -40,6 +42,11 @@ const walletEntrySchema = new mongoose.Schema(
         restaurant: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Restaurant'
+        },
+
+        shipper: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Shipper'
         },
 
         kind: {
@@ -99,6 +106,7 @@ const walletEntrySchema = new mongoose.Schema(
 walletEntrySchema.index({ ref: 1, wallet: 1 }, { unique: true });
 walletEntrySchema.index({ wallet: 1, createdAt: -1 });
 walletEntrySchema.index({ restaurant: 1, createdAt: -1 });
+walletEntrySchema.index({ shipper: 1, createdAt: -1 }, { sparse: true });
 
 const forbid = function () {
     throw new Error('Wallet entries are append-only');

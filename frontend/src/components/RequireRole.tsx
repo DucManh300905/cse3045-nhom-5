@@ -7,6 +7,7 @@ const ROLE_LABEL: Record<Role, string> = {
   CUSTOMER: 'khách hàng',
   RESTAURANT_OWNER: 'chủ quán',
   ADMIN: 'quản trị viên',
+  SHIPPER: 'tài xế',
 };
 
 /**

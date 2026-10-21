@@ -21,6 +21,8 @@ const walletRoutes = require('./modules/wallet/wallet.routes');
 const paymentRoutes = require('./modules/payment/payment.routes');
 const voucherRoutes = require('./modules/voucher/voucher.routes');
 const geoRoutes = require('./modules/routing/geo.routes');
+const shipperRoutes = require('./modules/shipper/shipper.routes');
+const shiftRoutes = require('./modules/shift/shift.routes');
 const { PUBLIC_DIR, PUBLIC_URL_PREFIX } = require('./config/storage');
 
 const app = express();
@@ -66,6 +68,10 @@ app.use('/api/vouchers', voucherRoutes.customerRouter);
 app.use('/api/payments', paymentRoutes.publicRouter);
 // Thông báo trong app (mọi vai trò)
 app.use('/api/notifications', notificationRoutes);
+// Tài xế MAK: hồ sơ, trực tuyến, nhận đơn, các bước giao, thu nhập
+app.use('/api/shipper', shipperRoutes.shipperRouter);
+// Ảnh xác nhận giao hàng: khách / quán / tài xế của đơn và admin
+app.use('/api/delivery', shipperRoutes.deliveryRouter);
 app.use('/api/merchant/restaurant', merchantRestaurantRoutes);
 app.use('/api/merchant/categories', categoryRouter);
 app.use('/api/merchant/menu-items', menuItemRouter);
@@ -74,6 +80,8 @@ app.use('/api/merchant/reviews', merchantReviewRoutes);
 app.use('/api/merchant/reports', merchantReportRoutes);
 app.use('/api/merchant/wallet', walletRoutes.merchantRouter);
 app.use('/api/merchant/vouchers', voucherRoutes.merchantRouter);
+// Quán "Theo lịch": lịch tuần, lịch ngày, tình trạng ca tài xế
+app.use('/api/merchant/schedule', shiftRoutes.merchantRouter);
 app.use('/api/admin', adminRoutes);
 
 // 404 cho route không tồn tại

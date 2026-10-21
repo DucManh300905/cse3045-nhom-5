@@ -371,6 +371,30 @@ Mọi chuyển khác → lỗi `409 INVALID_STATUS_TRANSITION`. Mỗi lần chuy
 | BR-84 | Thời gian dự kiến = thời gian chuẩn bị + thời gian di chuyển, làm tròn lên 5 phút. | ✅ |
 | BR-85 | Vị trí nơi nhận chỉ khách đó, chủ quán của đơn và admin xem được; không có trong API công khai. | ✅ |
 
+### Tài xế MAK (chốt 21/10/2026 — Kế hoạch triển khai Tài xế)
+
+| Mã | Quy tắc | |
+|---|---|---|
+| BR-90 | Quán chọn hình thức giao bằng nút trên Hồ sơ quán: **Quán tự giao** (`SELF`) hoặc **Tài xế MAK** (`PLATFORM`); đơn giữ hình thức lúc đặt (Q1). | ✅ |
+| BR-91 | Tài xế MAK chỉ nhận đơn **trả trước** (chuyển khoản); quán `PLATFORM` không nhận tiền mặt cho đơn giao tận nơi, tự lấy vẫn trả tiền mặt được (Q2). | ✅ |
+| BR-92 | Điều phối: tài xế đã duyệt, trực tuyến, rảnh, vị trí ≤ 2 phút, trong 5 km quanh quán; xếp theo đường thật; mời lần lượt 30 giây / người, tối đa 5 người / 3 phút; mỗi tài xế 1 đơn (Q5, Q6). | ✅ |
+| BR-93 | Không tìm được tài xế → báo quán: tự giao đơn này / tìm lại / hủy (đơn trả trước hoàn tiền tự động); admin gán tay được (Q7). | ✅ |
+| BR-94 | Tài xế trả đơn đã nhận (chưa lấy hàng) → tìm người khác; trả 3 đơn liên tiếp → khóa nhận đơn 1 ngày (sửa 21/10, xem BR-102). Quán hủy khi tài xế đang tới → MAK bù 5.000 đ. | ✅ |
+| BR-95 | Tiền công = 10.000 đ cho 2 km đầu + 3.000 đ / km tiếp theo (đường quán → khách), **MAK trả**, khách vẫn miễn phí ship (Q3, Q4); ghi sổ cùng transaction hoàn thành đơn. | ✅ |
+| BR-96 | Xác nhận đã giao bằng **ảnh chụp** của tài xế (bắt buộc, Q8 — thay mã 4 số); ảnh lưu vào lịch sử đơn, khách / quán / admin xem được. Giao thất bại: ảnh + lý do, admin quyết định. | ✅ |
+| BR-97 | Vị trí tài xế chỉ khách và quán của **đúng đơn đang giao** thấy, chỉ trong lúc tài xế giữ đơn; bỏ qua điểm nhảy > 80 km/h; mất vị trí > 5 phút khi đang giao → báo admin. | ✅ |
+
+### Đăng ký ca tài xế (chốt 21/10/2026 — Đặc tả Đăng ký ca tài xế, giai đoạn A)
+
+| Mã | Quy tắc | |
+|---|---|---|
+| BR-98 | Quán có thêm hình thức **"Theo lịch"**: trong khung quán xin và có ≥ 1 tài xế đăng ký ca → tài xế MAK giao (chuyển khoản trước); ngoài khung / khung không có tài xế → quán tự giao. | ✅ |
+| BR-99 | Lịch ngày mai: 14:00 hỏi quán (dựng sẵn từ lịch tuần), quán sửa tới 18:00, không trả lời → lịch tuần, không có lịch tuần → tự giao. Sau chốt chỉ bỏ được khung (ghi hủy muộn). Khung cố định Trưa / Chiều / Tối + khung tự chọn 1–4 giờ. | ✅ |
+| BR-100 | Ca theo **khu vực** (gộp lịch các quán); số tài xế cần = đơn dự kiến ÷ 6. Ca = cam kết trực tuyến; đơn vẫn điều phối tự động, **ưu tiên tài xế đang trong ca**. Đăng ký tới 2 giờ trước ca, không trùng giờ. | ✅ |
+| BR-101 | "Hoạt động" = bật trực tuyến. 30 phút đầu ca chưa từng trực tuyến = **vắng ca**; hủy ca < 2 giờ trước giờ bắt đầu = vi phạm. Thang: cảnh cáo → khóa 3 ngày → khóa 5 ngày → khóa vĩnh viễn; 30 ngày không vi phạm (tính từ lúc hết khóa): 1→0, 2→0, 3→2→0; admin mở lại tài khoản khóa vĩnh viễn → bậc 3. | ✅ |
+| BR-102 | Trả **3 đơn đã nhận liên tiếp** → khóa nhận đơn 1 ngày (không vào thang phạt; giao xong 1 đơn thì đếm lại). Bị khóa vẫn đăng nhập và rút tiền được. Thay BR-94 phần "3 lần / 24 giờ". | ✅ |
+| BR-103 | Tài xế **bắt buộc email đã xác thực** (OTP) để nộp hồ sơ và đăng ký ca; lịch ca, nhắc ca, cảnh cáo / khóa gửi cả trong app và qua email. | ✅ |
+
 ### Đánh giá
 
 | Mã | Quy tắc | |
@@ -460,6 +484,7 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 |---|---|
 | Vận hành | Nhân viên quán (RBAC), nhiều chi nhánh, in phiếu bếp, xin kéo dài thời gian chuẩn bị |
 | Tài chính | Ví + ledger, đối soát COD/online, rút tiền, sao kê, hóa đơn |
+| Tài xế (còn lại) | Đơn tiền mặt cho tài xế MAK (ứng tiền, hạn mức tiền mặt), phí ship cho khách, ghép nhiều đơn / chuyến, thưởng giờ cao điểm, app di động riêng |
 | Tăng trưởng | Combo/flash sale, quảng cáo, đơn hẹn giờ, đơn tại bàn QR, API cho POS |
 
 ---
@@ -545,6 +570,8 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 | 17 — API-5b (voucher) | 19/10/2026 | Module `voucher/`: voucher MAK (admin, nền tảng chịu, giới hạn quán) + voucher quán (chủ quán, quán chịu); `voucherCodes` ở preview / đặt đơn (1 mỗi loại), quán trừ trước, MAK trừ sau; hoa hồng trên phần quán thực bán; giữ lượt nguyên tử + giới hạn mỗi khách (`voucherredemptions`, slot unique), trả lượt khi hủy; ví chỉ bù phần MAK; doanh thu quán = total + phần MAK bù; FE: ô mã + danh sách voucher ở checkout, dòng giảm giá trong đơn, `/owner/vouchers`, `/admin/vouchers` | 277 |
 | 18 — Rút gọn luồng xử lý đơn + giờ mở cửa | 19/10/2026 | Nhận đơn → thẳng `PREPARING`; giao tận nơi bỏ `READY` (Đang làm → Đi giao → Đã giao), tự lấy giữ `READY`; quán hủy được tới trước khi đi giao; hỏi lại trước các bước không quay lại được; đơn cũ không bị kẹt. Giờ mở cửa: ghi cách đọc 24h dưới mỗi ô, cảnh báo đóng từ trưa (nhầm SA/CH), nút "Cả ngày"; khách thấy lý do quán đóng + giờ mở lại (RISKS R6) | 280 |
 | 19 — Bản đồ & quãng đường (bản tối giản) | 20/10/2026 | Module `routing/` (Goong Direction / AutoComplete / Geocode qua backend, ước lượng × 1,3 khi chưa có khóa / lỗi, bộ nhớ đệm 7 ngày), `/api/geo/*`; bắt buộc vị trí nơi nhận, chặn ngoài bán kính, lưu `route` + `estimatedDeliveryMinutes` vào đơn; nộp hồ sơ quán cần vị trí; khoảng cách trên danh sách quán. FE: `LocationPicker` (Leaflet + OSM, GPS, tìm địa chỉ, kéo ghim — tải lười), gắn vào Hồ sơ quán / Sổ địa chỉ / Thanh toán; bản đồ nhỏ + chỉ đường ở trang quán; chỉ đường tới khách ở đơn của chủ quán | 295 |
+| 20 — Tài xế MAK | 21/10/2026 | Chốt Q1–Q8 (Q8: ảnh xác nhận thay mã 4 số). Module `shipper/`: hồ sơ + giấy tờ + admin duyệt / khóa, trực tuyến / vị trí (lọc điểm vô lý), điều phối (`$near` + Goong Distance Matrix, mời 30 giây, tối đa 5 người / 3 phút, job 10 giây, `NO_SHIPPER` → quán tự giao / tìm lại), nhận đơn nguyên tử, tới quán → lấy hàng → ảnh giao, giao thất bại + admin xử lý, tài xế trả đơn (tạm ngưng khi hủy nhiều), gán tay, đánh giá tài xế; ví `SHIPPER` (tiền công, bù chuyến, rút tiền), `deliveryMode` của quán + chặn tiền mặt, migration 003, `npm run shipper:simulate`. FE: app tài xế `/shipper` (trực tuyến, lời mời đếm ngược, bản đồ, chụp ảnh, lịch sử, thu nhập, hồ sơ), theo dõi tài xế realtime cho khách + quán, nút hình thức giao, `/admin/shippers`, `/admin/dispatch` | 313 |
+| 21 — Đăng ký ca tài xế (giai đoạn A) | 22/10/2026 | Module `shift/`: hình thức giao "Theo lịch", lịch tuần + lịch ngày của quán, ca theo khu vực (khung cố định + tự chọn), job mỗi phút (14h hỏi, 18h chốt + gửi ca, 21h báo cáo, chốt 2 giờ trước, nhắc, vắng ca phút 30, kết thúc ca, giảm bậc), tài xế đăng ký / hủy ca (hủy sát giờ = vi phạm), ưu tiên tài xế trong ca khi điều phối, thang phạt có giảm bậc + audit log, trả 3 đơn liên tiếp → khóa 1 ngày, bắt buộc email cho tài xế, thông báo kèm email; sửa test cũ dễ lỗi (khách hủy / quán nhận cùng lúc). FE: `/owner/schedule`, tab "Ca làm" của tài xế (đăng ký ca, vi phạm, xác thực email), `/admin/shifts`, vi phạm + mở khóa ở chi tiết tài xế, khung tài xế MAK trên trang quán / thanh toán | 324 |
 
 **Lệnh hay dùng (trong `backend/`):**
 
@@ -556,4 +583,6 @@ npm run seed:demo      # tạo 3 quán demo + 16 món + tài khoản demo
 npm run db:init-replset # MongoDB cài trên máy: bật replica set 1 node (đặt đơn cần transaction)
 npm run migrate:001    # chuyển dữ liệu quán cũ sang trạng thái mới (thêm `-- --dry-run` để xem trước)
 npm run migrate:002    # tính điểm đánh giá / ratingScore cho quán có sẵn (API-8)
+npm run migrate:003    # tài xế MAK: thay index rút tiền cũ, tạo index mới, quán cũ -> deliveryMode SELF
+npm run shipper:simulate -- --count=3   # tài xế ảo tự nhận / giao đơn để demo (backend phải đang chạy)
 ```

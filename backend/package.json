@@ -11,10 +11,12 @@
     "seed:admin": "node src/utils/seeAdmin.js",
     "migrate:001": "node src/utils/migrations/001-restaurant-status.js",
     "migrate:002": "node src/utils/migrations/002-restaurant-rating.js",
+    "migrate:003": "node src/utils/migrations/003-shipper.js",
     "seed:demo": "node src/utils/seedDemo.js",
     "db:init-replset": "node src/utils/initReplicaSet.js",
     "sepay:simulate": "node src/utils/simulateSepay.js",
-    "sepay:pay": "node src/utils/simulateSepay.js"
+    "sepay:pay": "node src/utils/simulateSepay.js",
+    "shipper:simulate": "node src/utils/simulateShippers.js"
   },
   "jest": {
     "testEnvironment": "node",

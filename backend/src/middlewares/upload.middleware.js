@@ -38,7 +38,7 @@ const hasValidSignature = async (file) => {
 };
 
 // Tên file ngẫu nhiên, không dùng tên gốc của người dùng
-const createUploader = ({ dir, subDir, allowedTypes }) => {
+const createUploader = ({ dir, subDir, allowedTypes, maxSize = MAX_FILE_SIZE }) => {
     const target = path.join(dir, subDir);
 
     const storage = multer.diskStorage({
@@ -52,7 +52,7 @@ const createUploader = ({ dir, subDir, allowedTypes }) => {
 
     return multer({
         storage,
-        limits: { fileSize: MAX_FILE_SIZE, files: 1 },
+        limits: { fileSize: maxSize, files: 1 },
         fileFilter: (req, file, cb) => {
             if (!allowedTypes.includes(file.mimetype)) {
                 return cb(new AppError(400, 'INVALID_FILE_TYPE', 'File type is not allowed'));
@@ -64,10 +64,10 @@ const createUploader = ({ dir, subDir, allowedTypes }) => {
 };
 
 // Bọc multer: đổi lỗi multer (quá dung lượng...) thành AppError, bắt buộc phải có file
-const single = (uploader, field) => (req, res, next) => {
+const single = (uploader, field, maxSize = MAX_FILE_SIZE) => (req, res, next) => {
     uploader.single(field)(req, res, (err) => {
         if (err instanceof multer.MulterError) {
-            const message = err.code === 'LIMIT_FILE_SIZE' ? 'File is too large (max 2MB)' : err.message;
+            const message = err.code === 'LIMIT_FILE_SIZE' ? `File is too large (max ${maxSize / 1024 / 1024}MB)` : err.message;
             return next(new AppError(400, 'INVALID_FILE', message));
         }
 
@@ -107,6 +107,21 @@ const restaurantDocumentUpload = single(
     'file'
 );
 
+// Giấy tờ tài xế (CCCD, bằng lái, đăng ký xe): private như giấy tờ quán
+const shipperDocumentUpload = single(
+    createUploader({ dir: PRIVATE_DIR, subDir: 'shipper-documents', allowedTypes: DOCUMENT_TYPES }),
+    'file'
+);
+
+// Ảnh xác nhận giao / giao thất bại (Q8): private, chỉ khách - quán - tài xế của đơn và admin xem.
+// Ảnh điện thoại được nén ở trình duyệt trước khi gửi; vẫn cho tới 5MB phòng máy cũ không nén được.
+const PROOF_MAX_SIZE = 5 * 1024 * 1024;
+const deliveryProofUpload = single(
+    createUploader({ dir: PRIVATE_DIR, subDir: 'delivery-proofs', allowedTypes: IMAGE_TYPES, maxSize: PROOF_MAX_SIZE }),
+    'photo',
+    PROOF_MAX_SIZE
+);
+
 // Xóa file cũ khi thay ảnh/giấy tờ; lỗi xóa không làm hỏng request
 const removeFile = (absolutePath) => {
     if (absolutePath) {
@@ -118,5 +133,7 @@ module.exports = {
     restaurantImageUpload,
     menuItemImageUpload,
     restaurantDocumentUpload,
+    shipperDocumentUpload,
+    deliveryProofUpload,
     removeFile
 };

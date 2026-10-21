@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { getErrorMessage } from '../api/client';
 import { ordersApi } from '../api/orders';
 import AppHeader from '../components/AppHeader';
+import DeliveryTracker from '../components/DeliveryTracker';
 import { useSocketEvent } from '../context/SocketContext';
 import { useToast } from '../context/ToastContext';
 import type { Order, OrderStatus } from '../types';
@@ -92,7 +93,18 @@ export default function OrdersPage() {
       load(page);
     }
   });
+  // Tài xế MAK: có tài xế nhận, tới quán, giao thất bại... -> tải lại đúng đơn đó
+  useSocketEvent('delivery:changed', async e => {
+    if (e.deliveryStatus === 'ASSIGNED' && e.shipper) notify(`Đơn ${e.code}: tài xế ${e.shipper.fullName} đã nhận đơn`);
+    try {
+      const fresh = await ordersApi.get(e.orderId);
+      setOrders(list => list.map(o => (o.id === fresh.id ? fresh : o)));
+    } catch {
+      /* đơn không còn trong danh sách đang xem */
+    }
+  });
   useSocketEvent('reconnected', () => load(page));
+  const replace = (fresh: Order) => setOrders(list => list.map(o => (o.id === fresh.id ? fresh : o)));
 
   const cancel = async (o: Order) => {
     if (!window.confirm(`Hủy đơn ${o.code}?${o.paymentStatus === 'PAID' ? ' MAK sẽ hoàn tiền chuyển khoản cho bạn.' : ''}`)) return;
@@ -193,6 +205,8 @@ export default function OrdersPage() {
                         Dự kiến món xong lúc {new Date(o.estimatedReadyAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     )}
+
+                    <DeliveryTracker order={o} viewer="customer" onChanged={replace} />
 
                     <ul className="order-items">
                       {o.items.map(i => {

@@ -515,6 +515,98 @@ Biến môi trường: `GOONG_API_KEY`, `ROUTING_PROVIDER` (goong / estimate), `
 
 ---
 
+### 2.14 Tài xế MAK — `/shipper/*`, `/admin/shippers`, `/admin/dispatch` ✅ (21/10/2026)
+
+Kế hoạch + quyết định: file *"MAK Food — Kế hoạch triển khai Tài xế (Shipper)"* (Desktop). Quy tắc BR-90 → BR-97 (docs/project.md).
+
+- **Hình thức giao của quán** (`restaurants.deliveryMode`): `SELF` (quán tự giao, như cũ) | `PLATFORM` (tài xế MAK). Chủ quán đổi bằng nút trên trang Hồ sơ quán.
+  Đơn chụp lại `deliveryMode` lúc đặt. Đơn `PLATFORM` giao tận nơi **bắt buộc chuyển khoản trước** → tiền mặt: 422 `PREPAID_REQUIRED`.
+- **Tiền công** `orders.shipperFee` = 10.000 đ cho 2 km đầu + 3.000 đ / km tiếp theo (km lẻ tròn lên) theo `route.distanceKm`; MAK trả, khách vẫn miễn phí ship.
+- **Luồng**: quán nhận đơn → `PREPARING` + bắt đầu tìm tài xế (`delivery.status = SEARCHING`) → tài xế nhận (`ASSIGNED`) → tới quán (`ARRIVED_AT_STORE`)
+  → quán bấm "Món đã xong" (`READY`) → tài xế lấy hàng (`DELIVERING` / `PICKED_UP`) → tài xế **chụp ảnh** giao (`COMPLETED` / `DELIVERED`).
+  Quán không tự chuyển sang đang giao / hoàn thành với đơn `PLATFORM`.
+- **Điều phối**: tài xế đã duyệt, trực tuyến, rảnh, vị trí ≤ 2 phút, trong 5 km quanh quán; lấy 10 người gần nhất (`$near`), xếp theo đường thật (Goong Distance Matrix, 1 lần gọi);
+  mời lần lượt, mỗi lời mời 30 giây; tối đa 5 lời mời / 3 phút → `NO_SHIPPER`, báo quán (tự giao / tìm lại / hủy). Job `dispatch` chạy mỗi 10 giây.
+- **Ảnh xác nhận giao**: file private, xem qua `GET /delivery/orders/:id/proof` (khách của đơn, chủ quán, tài xế giao đơn, admin; người khác 404). Đơn trả ra `delivery.proof = { kind, takenAt, url }`, không lộ đường dẫn file.
+- **Ghi sổ** khi giao xong (cùng transaction): bút toán đơn như cũ + `SHIPPER_FEE` (PLATFORM → ví `shipper:<id>`). Quán hủy khi tài xế đã nhận (chưa lấy hàng) → `SHIPPER_COMPENSATION` 5.000 đ.
+
+**Tài xế** (role `SHIPPER`, tự đăng ký ở `/shipper/login`):
+
+| Method | Endpoint | Mô tả | |
+|---|---|---|---|
+| POST · GET · PUT | `/shipper/profile` | Tạo / xem / sửa hồ sơ `{ fullName, phone, idNumber?, vehicleType: MOTORBIKE│EBIKE│BICYCLE, licensePlate? }`. Sửa chỉ khi `DRAFT` / `REJECTED` (khác: 409 `SHIPPER_PROFILE_LOCKED`) | ✅ |
+| POST | `/shipper/profile/documents` | multipart `type` (`ID_CARD`, `DRIVER_LICENSE`, `VEHICLE_REGISTRATION`) + `file` — lưu private | ✅ |
+| POST | `/shipper/profile/submit` | `DRAFT│REJECTED → SUBMITTED`; thiếu giấy tờ (xe máy: cả 3 + biển số; xe đạp / xe điện: CCCD) → 422 `PROFILE_INCOMPLETE` | ✅ |
+| PUT | `/shipper/bank-account` | Tài khoản nhận tiền khi rút | ✅ |
+| GET | `/shipper/state` | `{ shipper, offer (lời mời đang chờ — chưa có tên / SĐT khách), activeOrder }` để mở app | ✅ |
+| POST | `/shipper/online` `{ lat?, lng? }` · `/shipper/offline` | Trực tuyến (cần `APPROVED`, không bị tạm ngưng — 409 `SHIPPER_DISPATCH_BLOCKED`) · nghỉ (đang giao → 409 `SHIPPER_BUSY`) | ✅ |
+| POST | `/shipper/location` `{ lat, lng }` | Ghi đè vị trí; < 3 giây hoặc > 80 km/h → `{ accepted: false, reason }`. Đang giao → đẩy `shipper:location` + giờ đến dự kiến (tính lại tối đa mỗi phút) | ✅ |
+| POST | `/shipper/offers/:id/accept` · `/decline` | Nhận (nguyên tử: chỉ 1 người thắng — 409 `OFFER_EXPIRED` / `ORDER_TAKEN` / `SHIPPER_BUSY`) · từ chối → mời người kế tiếp | ✅ |
+| GET | `/shipper/orders` · `/shipper/orders/:id` | Lịch sử chuyến / chi tiết đơn của mình | ✅ |
+| POST | `/shipper/orders/:id/arrived` · `/picked-up` | Tới quán · lấy hàng (`READY`, hoặc `PREPARING` nếu quán quên bấm) | ✅ |
+| POST | `/shipper/orders/:id/delivered` | multipart `photo` (bắt buộc, ≤ 5MB, ảnh) → hoàn thành + ghi sổ | ✅ |
+| POST | `/shipper/orders/:id/failed` | multipart `photo` + `reason` → `delivery.status = FAILED`, chờ admin | ✅ |
+| POST | `/shipper/orders/:id/withdraw` `{ reason? }` | Trả đơn đã nhận (chưa lấy hàng) → tìm tài xế khác; trả **3 đơn liên tiếp** → khóa nhận đơn 1 ngày (BR-102) | ✅ |
+| GET · POST | `/shipper/wallet`, `/wallet/entries`, `/wallet/payouts` | Thu nhập, lịch sử, rút tiền (cùng luồng rút của quán, admin chuyển ở `/admin/payouts`) | ✅ |
+
+**Khách / chủ quán / ảnh:**
+
+| Method | Endpoint | Mô tả | |
+|---|---|---|---|
+| GET | `/orders/:id/tracking` · `/merchant/orders/:id/tracking` | `{ deliveryStatus, shipper, location (chỉ khi tài xế đang giữ đơn), eta, store, dropoff, polyline }` | ✅ |
+| POST | `/orders/:id/shipper-rating` `{ stars 1–5, comment? }` | Khách đánh giá tài xế sau khi nhận hàng, 1 lần (409 `ALREADY_RATED`) | ✅ |
+| PATCH | `/merchant/restaurant/delivery-mode` `{ deliveryMode }` | Nút chọn hình thức giao; `PLATFORM` cần MAK đã bật chuyển khoản (422 `PAYMENT_METHOD_UNAVAILABLE`) | ✅ |
+| POST | `/merchant/orders/:id/self-deliver` · `/redispatch` | Không tìm được tài xế: quán tự giao đơn này · tìm lại | ✅ |
+| GET | `/delivery/orders/:id/proof` | 🔐 Ảnh xác nhận / ảnh giao thất bại (mọi vai trò có liên quan) | ✅ |
+
+**Admin:**
+
+| Method | Endpoint | Mô tả | |
+|---|---|---|---|
+| GET | `/admin/shippers?status=&q=` · `/admin/shippers/:id` · `/:id/documents/:type` | Danh sách (mặc định chờ duyệt), chi tiết, xem giấy tờ | ✅ |
+| POST | `/admin/shippers/:id/approve│reject│block│unblock` | Có audit log + thông báo; khóa → tắt trực tuyến, thu hồi lời mời | ✅ |
+| GET | `/admin/shippers/online` · `/admin/dispatch` | Bản đồ tài xế trực tuyến · đơn đang tìm / không có tài xế / đang giao / giao thất bại | ✅ |
+| POST | `/admin/orders/:id/assign` `{ shipperId }` · `/redispatch` | Gán tay (tài xế đã duyệt, đang rảnh) · tìm lại | ✅ |
+| POST | `/admin/orders/:id/delivery/resolve` `{ action: COMPLETE│CANCEL, note? }` | Giao thất bại: hoàn thành như thường, hoặc hủy + hoàn tiền khách (không hoàn suất); tài xế vẫn nhận tiền công | ✅ |
+
+Biến môi trường: `SHIPPER_BASE_FEE`, `SHIPPER_BASE_KM`, `SHIPPER_PER_KM`, `SHIPPER_CANCEL_COMPENSATION`, `SHIPPER_MAX_CANCELS_PER_DAY`,
+`DISPATCH_RADIUS_KM`, `DISPATCH_OFFER_SECONDS`, `DISPATCH_MAX_OFFERS`, `DISPATCH_SEARCH_MINUTES`, `SHIPPER_LOCATION_FRESH_SECONDS`, `SHIPPER_STALE_MINUTES` (xem `backend/.env.example`).
+Demo không cần tài xế thật: `npm run shipper:simulate -- --count=3` (tài khoản `sim.shipper<N>@mak.local`, mật khẩu ngẫu nhiên mỗi lần chạy).
+
+---
+
+### 2.15 Đăng ký ca tài xế — `/merchant/schedule`, `/shipper/shifts`, `/admin/shifts` ✅ (giai đoạn A, 22/10/2026)
+
+Đặc tả: file *"MAK Food — Đặc tả Đăng ký ca tài xế (bản chốt)"* (Desktop). Quy tắc BR-98 → BR-103.
+
+- **Ca = cam kết trực tuyến** trong khung giờ; đơn vẫn điều phối tự động, **ưu tiên tài xế đang trong ca** (không ai rảnh mới mời tài xế tự do).
+- Quán chọn hình thức giao **`SCHEDULED` ("Theo lịch")**: trong khung quán xin **và** ca có ≥ 1 tài xế (đã đăng ký / đã vào ca) → đơn `PLATFORM` (chuyển khoản trước); ngoài ra → `SELF`.
+  `GET /restaurants/:slug` và `/restaurants/:slug/menu` trả thêm `deliveryModeNow` (SELF│PLATFORM) và `platformWindowsToday`.
+- Khung cố định: Trưa 10:30–13:30 · Chiều 15:00–17:00 · Tối 17:00–21:00; khung tự chọn 1–4 giờ, bước 30 phút. Một khu vực "Hòa Lạc".
+- **Mốc** (job mỗi phút, chạy lại an toàn, làm bù mốc bị lỡ): 14:00 hỏi quán (lịch ngày mai dựng từ lịch tuần) · 18:00 chốt, gộp thành ca, gửi danh sách cho tài xế · 21:00 báo cáo quán ·
+  mỗi ca: 2 giờ trước chốt đăng ký (ca trống → báo quán + admin) · 1 giờ trước nhắc · phút 15 nhắc người chưa trực tuyến · phút 30 chưa từng trực tuyến → **vắng ca**. Thông báo trong app + **email**.
+- **Thang phạt** (vắng ca, hủy ca sát giờ < 2 giờ): cảnh cáo → khóa 3 ngày → khóa 5 ngày → khóa vĩnh viễn (`BLOCKED`); 30 ngày không vi phạm (tính từ lúc hết khóa): 1→0, 2→0, 3→2, rồi 30 ngày nữa → 0; admin mở lại tài khoản bị khóa vĩnh viễn → bậc 3.
+  **Trả 3 đơn đã nhận liên tiếp** → khóa nhận đơn 1 ngày (luật riêng, thay "3 lần / 24 giờ"). Bị khóa: không trực tuyến / nhận đơn / đăng ký ca, **vẫn rút tiền được**.
+- **Tài xế bắt buộc email đã xác thực**: cổng tài xế chỉ đăng ký bằng email (`/auth/register` role SHIPPER không có email → 400 `EMAIL_REQUIRED`); nộp hồ sơ / đăng ký ca cần email (403 `EMAIL_VERIFICATION_REQUIRED`).
+
+| Method | Endpoint | Mô tả | |
+|---|---|---|---|
+| GET | `/merchant/schedule` | `{ deliveryMode, weeklySchedule, fixedSlots, times, days: [hôm nay, ngày mai] { date, closed, answered, windows, lateCancels, shifts } }` | ✅ |
+| PUT | `/merchant/schedule/weekly` `{ weeklySchedule: [{ dayOfWeek, start, end, expectedOrders? }] }` | Ghi đè lịch tuần | ✅ |
+| PUT | `/merchant/schedule/days/:date` `{ windows }` | Ngày mai trước 18:00: sửa tự do. Sau chốt (và hôm nay): chỉ **bỏ** khung → ghi hủy muộn, gỡ khỏi ca (ca hết quán → hủy, tài xế không bị phạt); thêm → 409 `SCHEDULE_CLOSED` | ✅ |
+| PATCH | `/merchant/restaurant/delivery-mode` | Nhận thêm `SCHEDULED` | ✅ |
+| GET | `/shipper/shifts` | Ca hôm nay + ngày mai: quán, số tài xế cần / đã có, `registrationClosesAt`, `myStatus` | ✅ |
+| POST | `/shipper/shifts/:id/register` | Đăng ký (đã duyệt, email đã xác thực, không bị khóa tới giờ ca); trùng giờ → 409 `SHIFT_OVERLAP`; quá mốc → 409 `SHIFT_REGISTRATION_CLOSED` | ✅ |
+| POST | `/shipper/shifts/:id/cancel` | Trước ≥ 2 giờ: không phạt; sát giờ: `LATE_CANCELLED` + vi phạm; đã bắt đầu → 409 `SHIFT_STARTED` | ✅ |
+| GET | `/shipper/penalties` | `{ level, decayAt, lockedUntil, lockReason, consecutiveWithdrawals, blocked, history }` | ✅ |
+| POST | `/shipper/email` `{ email, verificationToken }` | Tài khoản tài xế cũ thêm email: lấy vé qua `/auth/otp/send` + `/auth/otp/verify` | ✅ |
+| GET | `/admin/shifts?date=` | Ca theo ngày + danh sách tài xế đăng ký và trạng thái | ✅ |
+| GET · POST | `/admin/shippers/:id/penalties` · `/admin/shippers/:id/unlock` `{ reason? }` | Xem vi phạm · mở khóa tạm thời sớm (audit log) | ✅ |
+
+Giai đoạn B (sau 02/11): yêu cầu tài xế đột xuất gửi tất cả tài xế, nút khiếu nại, Web Push, thống kê tỉ lệ lấp ca / nhận đơn.
+
+---
+
 ## 3. Realtime — Socket.IO ✅
 
 File: `src/realtime/socket.js` (server) · `frontend/src/context/SocketContext.tsx` (`useSocketEvent`). Cùng cổng với REST.
@@ -529,6 +621,10 @@ File: `src/realtime/socket.js` (server) · `frontend/src/context/SocketContext.t
 | `order:status_changed` | `user:{customerId}`, `restaurant:{id}` | `{ orderId, code, from, to, actorType, reason?, at }` | Mọi lần đổi trạng thái (kể cả SYSTEM timeout) ✅ |
 | `notification:new` | `user:{id}` | `{ id, type, title, body, data: { orderId?, restaurantId?, code?, link }, isRead, createdAt }` | Khi tạo notification ✅ |
 | `restaurant:status_changed` | `user:{ownerId}` | `{ restaurantId, status, rejectReason? }` | Admin duyệt / từ chối / khóa / mở khóa ✅ |
+| `dispatch:offer` | `user:{shipperUserId}` | Lời mời: `{ offerId, orderId, code, expiresAt, toStoreKm, tripKm, fee, restaurant, dropoff }` | Mời tài xế nhận đơn (30 giây) ✅ |
+| `dispatch:cancelled` | `user:{shipperUserId}` | `{ orderId, offerId?, reason: EXPIRED│ORDER_CHANGED│ORDER_CANCELLED│ASSIGNED_TO_OTHER }` | Lời mời hết giờ / đơn bị hủy / admin gán người khác ✅ |
+| `delivery:changed` | khách, `restaurant:{id}`, tài xế, `admin` | `{ orderId, code, status, deliveryStatus, shipper }` | Bước giao của tài xế đổi ✅ |
+| `shipper:location` | khách + `restaurant:{id}` của đúng đơn | `{ orderId, lat, lng, at, eta }` | Tài xế đang giữ đơn gửi vị trí (BR-97) ✅ |
 | `ready` | (chính socket đó) | `{ rooms }` | Ngay sau khi vào phòng — dùng trong test |
 
 Mất kết nối: FE tải lại danh sách đơn khi kết nối lại (`useSocketEvent('reconnected')`) để không sót đơn ✅. Chủ quán vừa tạo quán → FE tự kết nối lại để vào phòng `restaurant:{id}`.
@@ -579,6 +675,15 @@ Mất kết nối: FE tải lại danh sách đơn khi kết nối lại (`useSo
 | `PAYOUT_PENDING` | 409 | Đã có yêu cầu rút đang chờ | ✅ |
 | `BANK_ACCOUNT_REQUIRED` | 422 | Rút tiền khi chưa lưu tài khoản ngân hàng | ✅ |
 | `INSUFFICIENT_BALANCE` | 422 | Rút quá số dư ví | ✅ |
+| `PREPAID_REQUIRED` | 422 | Quán giao bằng tài xế MAK mà khách chọn tiền mặt cho đơn giao tận nơi (BR-91) | ✅ |
+| `SHIPPER_PROFILE_REQUIRED` / `SHIPPER_PROFILE_EXISTS` / `SHIPPER_PROFILE_LOCKED` | 404 / 409 / 409 | Chưa có / đã có / không sửa được hồ sơ tài xế | ✅ |
+| `SHIPPER_NOT_APPROVED` / `SHIPPER_BLOCKED` | 403 | Hồ sơ tài xế chưa duyệt / bị khóa | ✅ |
+| `SHIPPER_BUSY` / `SHIPPER_DISPATCH_BLOCKED` | 409 | Tài xế đang giao đơn khác / bị tạm ngưng do hủy nhiều (BR-94) | ✅ |
+| `OFFER_EXPIRED` / `ORDER_TAKEN` | 409 | Lời mời hết hạn / đơn đã có tài xế khác nhận | ✅ |
+| `ALREADY_RATED` | 409 | Đã đánh giá tài xế của đơn | ✅ |
+| `SCHEDULE_CLOSED` | 409 | Thêm khung sau giờ chốt lịch | ✅ |
+| `SHIFT_REGISTRATION_CLOSED` / `SHIFT_OVERLAP` / `SHIFT_STARTED` | 409 | Quá mốc đăng ký ca / trùng giờ ca khác / ca đã bắt đầu | ✅ |
+| `EMAIL_REQUIRED` / `EMAIL_VERIFICATION_REQUIRED` | 400 / 403 | Tài xế đăng ký không có email / chưa xác thực email (BR-103) | ✅ |
 | `INTERNAL_ERROR` | 500 | Lỗi không lường trước (đã log ở server) | ✅ |
 
 ---

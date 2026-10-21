@@ -1,4 +1,4 @@
-export type Role = 'CUSTOMER' | 'RESTAURANT_OWNER' | 'ADMIN';
+export type Role = 'CUSTOMER' | 'RESTAURANT_OWNER' | 'ADMIN' | 'SHIPPER';
 
 export interface Address {
   id: string;
@@ -72,6 +72,12 @@ export interface Restaurant extends RestaurantSummary {
   openingHours: OpeningHour[];
   minOrderAmount: number;
   deliveryRadiusKm?: number;
+  /** PLATFORM: tài xế MAK giao — khách phải chuyển khoản trước khi chọn giao tận nơi */
+  deliveryMode?: DeliveryMode;
+  /** Hình thức giao lúc này (quán "Theo lịch": PLATFORM trong ca có tài xế, ngoài ra SELF) */
+  deliveryModeNow?: 'SELF' | 'PLATFORM';
+  /** Quán "Theo lịch": các khung hôm nay giao bằng tài xế MAK */
+  platformWindowsToday?: { start: string; end: string }[];
   location?: GeoPoint;
   /** Khoảng cách ước lượng tới người xem (khi gửi lat/lng) */
   distanceKm?: number;
@@ -167,6 +173,31 @@ export type OrderStatus =
 
 export type FulfillmentType = 'DELIVERY' | 'PICKUP';
 
+/** SELF: quán tự giao · PLATFORM: tài xế MAK giao (chỉ đơn trả trước) · SCHEDULED: theo lịch (chỉ là cài đặt của quán; đơn luôn là SELF / PLATFORM) */
+export type DeliveryMode = 'SELF' | 'PLATFORM' | 'SCHEDULED';
+/** Bước của tài xế (đơn PLATFORM), tách khỏi trạng thái chính của đơn */
+export type DeliveryStatus = 'SEARCHING' | 'NO_SHIPPER' | 'ASSIGNED' | 'ARRIVED_AT_STORE' | 'PICKED_UP' | 'DELIVERED' | 'FAILED';
+
+export interface ShipperSnapshot {
+  fullName: string;
+  phone?: string;
+  vehicleType?: VehicleType;
+  licensePlate?: string;
+}
+
+/** Ảnh xác nhận giao / giao thất bại — url là API cần token (xem bằng ProofPhoto) */
+export interface DeliveryProof {
+  kind: 'DELIVERED' | 'FAILED';
+  takenAt: string;
+  url: string;
+}
+
+export interface DeliveryEta {
+  minutes: number;
+  target: 'STORE' | 'CUSTOMER';
+  updatedAt: string;
+}
+
 /** Dòng đơn — snapshot tại lúc đặt (BR-33) */
 export interface OrderLine {
   id: string;
@@ -184,7 +215,7 @@ export interface OrderLine {
 export interface OrderStatusEvent {
   from?: OrderStatus;
   to: OrderStatus;
-  actorType: 'CUSTOMER' | 'OWNER' | 'ADMIN' | 'SYSTEM';
+  actorType: 'CUSTOMER' | 'OWNER' | 'ADMIN' | 'SYSTEM' | 'SHIPPER';
   reason?: string;
   at: string;
 }
@@ -198,7 +229,28 @@ export interface Order {
   restaurantSnapshot: { name: string; slug?: string; phone?: string; address?: string };
   items: OrderLine[];
   fulfillmentType: FulfillmentType;
-  delivery?: { receiverName: string; phone: string; addressLine: string; note?: string; location?: GeoPoint };
+  delivery?: {
+    receiverName: string;
+    phone: string;
+    addressLine: string;
+    note?: string;
+    location?: GeoPoint;
+    status?: DeliveryStatus | null;
+    shipperSnapshot?: ShipperSnapshot;
+    assignedAt?: string;
+    arrivedAt?: string;
+    pickedUpAt?: string;
+    deliveredAt?: string;
+    failedAt?: string;
+    failReason?: string;
+    attempts?: number;
+    searchStartedAt?: string;
+    eta?: DeliveryEta | null;
+    proof?: DeliveryProof;
+    rating?: { stars: number; comment?: string; at: string };
+  };
+  /** Chụp theo hình thức giao của quán lúc đặt (đơn tự lấy không có) */
+  deliveryMode?: DeliveryMode;
   route?: DeliveryRoute;
   estimatedDeliveryMinutes?: number;
   subtotal: number;
@@ -264,6 +316,10 @@ export interface OrderPreview {
   /** null: chưa ghim nơi nhận / quán chưa có vị trí / tự đến lấy */
   route: DeliveryRoute | null;
   estimatedDeliveryMinutes: number | null;
+  /** null khi tự đến lấy */
+  deliveryMode: DeliveryMode | null;
+  /** Quán giao bằng tài xế MAK: chỉ nhận chuyển khoản trước */
+  prepaidRequired: boolean;
   total: number;
 }
 
@@ -439,7 +495,25 @@ export type NotificationType =
   | 'PAYMENT_ISSUE'
   | 'PAYMENT_UNMATCHED'
   | 'REFUND_REQUESTED'
-  | 'REFUND_DONE';
+  | 'REFUND_DONE'
+  | 'SHIPPER_SUBMITTED'
+  | 'SHIPPER_APPROVED'
+  | 'SHIPPER_REJECTED'
+  | 'SHIPPER_BLOCKED'
+  | 'SHIPPER_UNBLOCKED'
+  | 'DELIVERY_ASSIGNED'
+  | 'DELIVERY_NO_SHIPPER'
+  | 'DELIVERY_CANCELLED'
+  | 'DELIVERY_FAILED'
+  | 'DELIVERY_STALE'
+  | 'SHIPPER_EARNING'
+  | 'SHIFT_PLAN_REQUEST'
+  | 'SHIFT_LIST'
+  | 'SHIFT_REPORT'
+  | 'SHIFT_UNFILLED'
+  | 'SHIFT_REMINDER'
+  | 'SHIFT_CANCELLED'
+  | 'PENALTY';
 
 export interface AppNotification {
   id: string;
@@ -591,7 +665,9 @@ export interface Topup {
 export type PayoutStatus = 'REQUESTED' | 'PAID' | 'REJECTED';
 export interface Payout {
   id: string;
-  restaurant: RestaurantRef;
+  /** Lệnh rút của quán (restaurant) hoặc của tài xế MAK (shipper) */
+  restaurant?: RestaurantRef;
+  shipper?: string | { id: string; fullName: string; phone?: string };
   amount: number;
   bankAccount: BankAccount;
   status: PayoutStatus;
@@ -603,7 +679,7 @@ export interface Payout {
 
 export type WalletEntryKind =
   | 'ORDER_SETTLE' | 'TOPUP' | 'PAYOUT_REQUEST' | 'PAYOUT_PAID' | 'PAYOUT_REJECT' | 'ADJUSTMENT'
-  | 'ORDER_PAYMENT' | 'REFUND_PENDING' | 'REFUND_PAID';
+  | 'ORDER_PAYMENT' | 'REFUND_PENDING' | 'REFUND_PAID' | 'SHIPPER_FEE' | 'SHIPPER_COMPENSATION';
 export interface WalletEntry {
   id: string;
   kind: WalletEntryKind;
@@ -641,6 +717,8 @@ export interface WalletOverview {
   owedToRestaurants: number;
   owedByRestaurants: number;
   negativeRestaurants: number;
+  /** Thu nhập tài xế chưa rút */
+  owedToShippers: number;
   lockedRestaurants: number;
   pendingTopups: number;
   pendingPayouts: { count: number; amount: number };
@@ -702,4 +780,264 @@ export interface AdminWallet {
     walletLockReason?: WalletLockReason | null;
     bankAccount?: BankAccount;
   } | null;
+}
+
+// ================= Tài xế MAK (/shipper/*, /admin/shippers, /admin/dispatch) =================
+
+export type ShipperStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'BLOCKED';
+export type ShipperDocumentType = 'ID_CARD' | 'DRIVER_LICENSE' | 'VEHICLE_REGISTRATION';
+export type VehicleType = 'MOTORBIKE' | 'EBIKE' | 'BICYCLE';
+
+export interface ShipperDocument {
+  type: ShipperDocumentType;
+  originalName: string;
+  mimeType: string;
+  uploadedAt: string;
+  /** Chỉ admin: API xem file (cần token) */
+  url?: string;
+}
+
+export interface ShipperProfile {
+  id: string;
+  fullName: string;
+  phone: string;
+  idNumber?: string;
+  vehicleType: VehicleType;
+  licensePlate?: string;
+  documents: ShipperDocument[];
+  status: ShipperStatus;
+  rejectReason?: string;
+  submittedAt?: string;
+  approvedAt?: string;
+  bankAccount?: BankAccount;
+  isOnline: boolean;
+  location: { lat: number; lng: number } | null;
+  locationAt?: string;
+  activeOrder: string | null;
+  dispatchBlockedUntil?: string | null;
+  dispatchBlockReason?: 'WITHDRAWALS' | 'PENALTY' | null;
+  consecutiveWithdrawals?: number;
+  /** Thang phạt ca: 0 sạch · 1 cảnh cáo · 2 khóa 3 ngày · 3 khóa 5 ngày · 4 khóa vĩnh viễn */
+  penaltyLevel?: number;
+  penaltyDecayAt?: string | null;
+  /** Email tài khoản (tài xế bắt buộc email đã xác thực) */
+  email?: string | null;
+  emailVerified?: boolean;
+  completedCount: number;
+  ratingAvg: number;
+  ratingCount: number;
+  createdAt: string;
+}
+
+export interface AdminShipper extends ShipperProfile {
+  user: { id: string; email?: string; phone?: string; status: 'ACTIVE' | 'BLOCKED' } | string;
+}
+
+/** Lời mời nhận đơn (đếm ngược tới expiresAt) — chưa có tên / SĐT khách */
+export interface ShipperOffer {
+  offerId: string;
+  orderId: string;
+  code: string;
+  expiresAt: string;
+  toStoreKm: number;
+  toStoreMinutes: number;
+  tripKm: number | null;
+  fee: number;
+  itemsCount: number;
+  restaurant: { name: string; address: string; location?: GeoPoint };
+  dropoff: { addressLine?: string; location?: GeoPoint };
+}
+
+export interface LatLngPoint {
+  lat: number;
+  lng: number;
+}
+
+/** Đơn trong app tài xế */
+export interface ShipperOrder {
+  id: string;
+  code: string;
+  status: OrderStatus;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  total: number;
+  shipperFee: number;
+  route: { distanceKm: number; durationMinutes: number; polyline?: string | null } | null;
+  items: { name: string; qty: number; variant?: string; options: string[]; note?: string }[];
+  store: { name?: string; phone?: string; address?: string; location: LatLngPoint | null };
+  dropoff: { receiverName?: string; phone?: string; addressLine?: string; note?: string; location: LatLngPoint | null };
+  delivery: {
+    status: DeliveryStatus | null;
+    assignedAt?: string;
+    arrivedAt?: string;
+    pickedUpAt?: string;
+    deliveredAt?: string;
+    failedAt?: string;
+    failReason?: string;
+    eta: DeliveryEta | null;
+    proof: DeliveryProof | null;
+    rating: { stars: number; comment?: string } | null;
+  };
+  placedAt: string | null;
+  completedAt?: string;
+  createdAt: string;
+}
+
+export interface ShipperState {
+  shipper: ShipperProfile;
+  offer: ShipperOffer | null;
+  activeOrder: ShipperOrder | null;
+}
+
+export interface ShipperWallet {
+  balance: number;
+  available: number;
+  payoutMin: number;
+  baseFee: number;
+  baseKm: number;
+  perKm: number;
+  cancelCompensation: number;
+  bankAccount: BankAccount | null;
+  pendingPayout: Payout | null;
+}
+
+/** GET /orders/:id/tracking, /merchant/orders/:id/tracking */
+export interface OrderTracking {
+  orderId: string;
+  code: string;
+  status: OrderStatus;
+  deliveryMode: DeliveryMode | null;
+  deliveryStatus: DeliveryStatus | null;
+  shipper: (ShipperSnapshot & { ratingAvg: number | null; ratingCount: number | null }) | null;
+  location: (LatLngPoint & { at: string }) | null;
+  eta: DeliveryEta | null;
+  store: { name: string; address: string; location: LatLngPoint | null } | null;
+  dropoff: { addressLine?: string; location: LatLngPoint | null } | null;
+  polyline: string | null;
+}
+
+/** Bảng điều phối của admin */
+export interface DispatchItem {
+  id: string;
+  code: string;
+  status: OrderStatus;
+  placedAt: string | null;
+  total: number;
+  shipperFee: number;
+  restaurant: { name: string; slug?: string; phone?: string; address?: string };
+  dropoff: { addressLine?: string; location: LatLngPoint | null };
+  delivery: {
+    status: DeliveryStatus;
+    attempts?: number;
+    searchStartedAt?: string;
+    shipper: ShipperSnapshot | null;
+    shipperId?: string;
+    failReason?: string;
+    staleAlertAt?: string | null;
+    proof: DeliveryProof | null;
+  };
+}
+
+export interface OnlineShipper {
+  id: string;
+  fullName: string;
+  phone: string;
+  licensePlate?: string;
+  vehicleType: VehicleType;
+  ratingAvg: number;
+  location: LatLngPoint | null;
+  locationAt?: string;
+  activeOrder: { id: string; code: string; deliveryStatus: DeliveryStatus } | null;
+}
+
+// ================= Đăng ký ca tài xế (/merchant/schedule, /shipper/shifts, /admin/shifts) =================
+
+export interface TimeWindow {
+  start: string;
+  end: string;
+  expectedOrders?: number;
+}
+
+export interface WeeklyWindow extends TimeWindow {
+  /** 0 = Chủ nhật */
+  dayOfWeek: number;
+}
+
+export type ShiftStatus = 'OPEN' | 'LOCKED' | 'RUNNING' | 'DONE' | 'CANCELLED';
+export type AssignmentStatus = 'REGISTERED' | 'ACTIVE' | 'NO_SHOW' | 'CANCELLED' | 'LATE_CANCELLED' | 'VOID';
+
+export interface ShiftView {
+  id: string;
+  date: string;
+  start: string;
+  end: string;
+  startAt: string;
+  endAt: string;
+  kind: 'FIXED' | 'CUSTOM';
+  label: string;
+  status: ShiftStatus;
+  restaurants: { id: string; name: string; address?: string; expectedOrders?: number }[];
+  expectedOrders: number;
+  driversNeeded: number;
+  driversRegistered: number;
+  registrationClosesAt: string;
+  /** Chỉ có ở trang tài xế */
+  myStatus?: AssignmentStatus | null;
+}
+
+export interface MerchantScheduleDay {
+  date: string;
+  /** Đã qua mốc chốt: chỉ được bỏ khung */
+  closed: boolean;
+  answered: boolean;
+  windows: TimeWindow[];
+  lateCancels: { start: string; end: string; at: string }[];
+  shifts: ShiftView[];
+}
+
+export interface MerchantSchedule {
+  deliveryMode: DeliveryMode;
+  weeklySchedule: WeeklyWindow[];
+  fixedSlots: { key: string; label: string; start: string; end: string }[];
+  times: { askAt: string; closeAt: string; reportAt: string; cutoffHours: number; ordersPerDriver: number };
+  days: MerchantScheduleDay[];
+}
+
+export interface ShipperShiftList {
+  area: string;
+  cutoffHours: number;
+  shifts: ShiftView[];
+}
+
+export interface PenaltyRecord {
+  id: string;
+  kind: 'VIOLATION' | 'DECAY' | 'WITHDRAW_LOCK' | 'ADMIN_UNLOCK' | 'ADMIN_UNBLOCK';
+  reason?: 'NO_SHOW' | 'LATE_CANCEL' | 'WITHDRAWALS' | null;
+  fromLevel?: number;
+  toLevel?: number;
+  lockedUntil?: string | null;
+  shift?: { date: string; start: string; end: string; label: string } | null;
+  note?: string;
+  createdAt: string;
+}
+
+export interface PenaltySummary {
+  level: number;
+  decayAt: string | null;
+  lockedUntil: string | null;
+  lockReason: 'WITHDRAWALS' | 'PENALTY' | null;
+  consecutiveWithdrawals: number;
+  blocked: boolean;
+  history: PenaltyRecord[];
+}
+
+export interface AdminShiftView extends ShiftView {
+  assignments: {
+    id: string;
+    status: AssignmentStatus;
+    registeredAt: string;
+    activeAt?: string;
+    cancelledAt?: string;
+    shipper: { id: string; fullName: string; phone: string; licensePlate?: string; penaltyLevel?: number } | null;
+  }[];
 }

@@ -20,6 +20,9 @@ export default function AdminLayout() {
             <NavLink to="/admin" end className="nav-link">Duyệt quán</NavLink>
             <NavLink to="/admin/users" className="nav-link">Người dùng</NavLink>
             <NavLink to="/admin/orders" className="nav-link">Đơn hàng</NavLink>
+            <NavLink to="/admin/shippers" className="nav-link">Tài xế</NavLink>
+            <NavLink to="/admin/dispatch" className="nav-link">Điều phối</NavLink>
+            <NavLink to="/admin/shifts" className="nav-link">Ca tài xế</NavLink>
             <NavLink to="/admin/wallets" className="nav-link">Ví đối soát</NavLink>
             <NavLink to="/admin/vouchers" className="nav-link">Voucher</NavLink>
             <NavLink to="/admin/reviews" className="nav-link">Đánh giá</NavLink>
@@ -41,6 +44,9 @@ export default function AdminLayout() {
           <NavLink to="/admin" end>Duyệt quán</NavLink>
           <NavLink to="/admin/users">Người dùng</NavLink>
           <NavLink to="/admin/orders">Đơn hàng</NavLink>
+          <NavLink to="/admin/shippers">Tài xế</NavLink>
+          <NavLink to="/admin/dispatch">Điều phối</NavLink>
+          <NavLink to="/admin/shifts">Ca tài xế</NavLink>
           <NavLink to="/admin/wallets">Ví đối soát</NavLink>
           <NavLink to="/admin/vouchers">Voucher</NavLink>
           <NavLink to="/admin/reviews">Đánh giá</NavLink>

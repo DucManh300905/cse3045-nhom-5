@@ -35,6 +35,8 @@ export default function UserMenu() {
           </div>
           {user.role === 'RESTAURANT_OWNER' ? (
             <button onClick={() => { setOpen(false); navigate('/owner'); }}>Kênh chủ quán</button>
+          ) : user.role === 'SHIPPER' ? (
+            <button onClick={() => { setOpen(false); navigate('/shipper'); }}>App tài xế</button>
           ) : user.role === 'ADMIN' ? (
             <button onClick={() => { setOpen(false); navigate('/admin'); }}>Trang quản trị</button>
           ) : (

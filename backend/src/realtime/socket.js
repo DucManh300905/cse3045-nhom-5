@@ -87,6 +87,45 @@ const emitOrderStatusChanged = (order) => {
     if (order.placedAt) {
         emit(rooms.restaurant(order.restaurant), 'order:status_changed', payload);
     }
+    // Tài xế đang nhận đơn này (vd quán hủy, khách / hệ thống đổi trạng thái)
+    if (order.delivery?.shipperUser) {
+        emit(rooms.user(order.delivery.shipperUser), 'order:status_changed', payload);
+    }
+};
+
+// ======================= Tài xế MAK =======================
+
+// Lời mời nhận đơn -> đúng một tài xế (đếm ngược 30 giây trên máy tài xế)
+const emitDispatchOffer = (shipperUserId, payload) => emit(rooms.user(shipperUserId), 'dispatch:offer', payload);
+
+// Lời mời / đơn bị thu hồi (hết giờ, đơn bị hủy, admin gán người khác...) -> tài xế
+const emitDispatchCancelled = (shipperUserId, payload) => emit(rooms.user(shipperUserId), 'dispatch:cancelled', payload);
+
+/**
+ * Bước giao đổi (tìm tài xế, đã có tài xế, tới quán, lấy hàng, giao xong / thất bại)
+ * -> khách, quán, tài xế đang nhận, admin (bảng điều phối)
+ */
+const emitDeliveryChanged = (order) => {
+    const payload = {
+        orderId: String(order._id),
+        code: order.code,
+        status: order.status,
+        deliveryStatus: order.delivery?.status ?? null,
+        shipper: order.delivery?.shipperSnapshot?.fullName ? order.delivery.shipperSnapshot : null
+    };
+    emit(rooms.user(order.customer), 'delivery:changed', payload);
+    emit(rooms.restaurant(order.restaurant), 'delivery:changed', payload);
+    if (order.delivery?.shipperUser) {
+        emit(rooms.user(order.delivery.shipperUser), 'delivery:changed', payload);
+    }
+    emit(rooms.admin, 'delivery:changed', payload);
+};
+
+// Vị trí tài xế của đơn đang giao -> chỉ khách + quán của đúng đơn đó (BR-97)
+const emitShipperLocation = (order, payload) => {
+    const data = { orderId: String(order._id), ...payload };
+    emit(rooms.user(order.customer), 'shipper:location', data);
+    emit(rooms.restaurant(order.restaurant), 'shipper:location', data);
 };
 
 // Admin duyệt / từ chối / khóa quán -> chủ quán
@@ -114,6 +153,10 @@ module.exports = {
     closeSocket,
     emitOrderNew,
     emitOrderStatusChanged,
+    emitDispatchOffer,
+    emitDispatchCancelled,
+    emitDeliveryChanged,
+    emitShipperLocation,
     emitRestaurantStatusChanged,
     emitNotification
 };

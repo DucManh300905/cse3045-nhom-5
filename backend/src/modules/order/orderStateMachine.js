@@ -10,6 +10,12 @@
 //   ACCEPTED │ PREPARING │ READY ──▶ CANCELLED (quán hủy, bắt buộc lý do) — đã đi giao thì không hủy được
 //
 // Đơn cũ (trước 19/10) đang ở ACCEPTED / READY của đơn giao tận nơi vẫn đi tiếp được, không bị kẹt.
+//
+// Tài xế MAK giao (deliveryMode = PLATFORM, 21/10/2026) — quán chỉ làm món, tài xế lấy và giao:
+//   PLACED ──[Nhận đơn]──▶ PREPARING (đồng thời tìm tài xế) ──[Món đã xong]──▶ READY
+//          ──[Tài xế lấy hàng]──▶ DELIVERING ──[Tài xế chụp ảnh giao]──▶ COMPLETED
+//   (tài xế lấy được cả khi quán quên bấm "Món đã xong": PREPARING ──▶ DELIVERING)
+//   Bước của tài xế nằm ở delivery.status (shipper/delivery.service.js), quán / khách không bấm thay được.
 // Mọi chuyển khác -> 409 INVALID_STATUS_TRANSITION.
 
 const OWNER_REJECT_REASONS = ['OUT_OF_STOCK', 'OVERLOADED', 'CLOSED', 'OTHER'];
@@ -29,6 +35,7 @@ const OWNER_CANCELLABLE = ['ACCEPTED', 'PREPARING', 'READY'];
 const FINAL_STATUSES = ['REJECTED', 'CANCELLED', 'COMPLETED'];
 
 const isDelivery = (order) => order.fulfillmentType === 'DELIVERY';
+const isPlatform = (order) => isDelivery(order) && order.deliveryMode === 'PLATFORM';
 
 /**
  * Chủ quán có được chuyển đơn từ trạng thái hiện tại sang `to` không.
@@ -37,6 +44,11 @@ const isDelivery = (order) => order.fulfillmentType === 'DELIVERY';
 const canOwnerAdvance = (order, to) => {
     if (!(OWNER_FORWARD[order.status] || []).includes(to)) {
         return false;
+    }
+
+    // Tài xế MAK: quán chỉ được báo "Món đã xong"
+    if (isPlatform(order)) {
+        return order.status === 'PREPARING' && to === 'READY';
     }
 
     if (order.status === 'PREPARING') {
@@ -51,6 +63,9 @@ const canOwnerAdvance = (order, to) => {
 
 /** Bước tiếp theo gợi ý cho màn hình quán (null nếu không còn bước nào) */
 const nextOwnerStatus = (order) => {
+    if (isPlatform(order)) {
+        return order.status === 'PREPARING' ? 'READY' : null;
+    }
     switch (order.status) {
         case 'ACCEPTED':
             return 'PREPARING';

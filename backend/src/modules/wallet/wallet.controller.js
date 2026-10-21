@@ -147,7 +147,7 @@ const adjustWallet = asyncHandler(async (req, res) => {
     return ok(res, { balance: wallet?.balance ?? 0 });
 });
 
-const listByStatus = (Model, { populate } = {}) =>
+const listByStatus = (Model, { populate, paths = [{ path: 'restaurant', select: 'name slug' }] } = {}) =>
     asyncHandler(async (req, res) => {
         const filter = {};
         if (req.query.status) filter.status = req.query.status;
@@ -155,7 +155,7 @@ const listByStatus = (Model, { populate } = {}) =>
 
         const result = await paginate(Model, filter, getPagination(req), {
             sort: { createdAt: -1, _id: -1 },
-            populate: { path: 'restaurant', select: 'name slug' }
+            populate: paths
         });
         return ok(res, populate ? { ...result, items: result.items.map(populate) } : result);
     });
@@ -163,8 +163,13 @@ const listByStatus = (Model, { populate } = {}) =>
 // GET /admin/topups?status=&q=
 const listTopups = listByStatus(Topup, { populate: walletService.withQr });
 
-// GET /admin/payouts?status=&q=
-const listPayouts = listByStatus(Payout);
+// GET /admin/payouts?status=&q= — gồm cả lệnh rút của tài xế MAK (shipper)
+const listPayouts = listByStatus(Payout, {
+    paths: [
+        { path: 'restaurant', select: 'name slug' },
+        { path: 'shipper', select: 'fullName phone' }
+    ]
+});
 
 // POST /admin/topups/:id/confirm { receivedAmount?, bankRef? }
 const confirmTopup = asyncHandler(async (req, res) => {

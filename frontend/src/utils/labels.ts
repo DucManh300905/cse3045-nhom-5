@@ -81,6 +81,8 @@ export const WALLET_ENTRY_LABEL: Record<string, string> = {
   ORDER_PAYMENT: 'Khách chuyển khoản',
   REFUND_PENDING: 'Chờ hoàn tiền',
   REFUND_PAID: 'Đã hoàn tiền',
+  SHIPPER_FEE: 'Tiền công giao đơn',
+  SHIPPER_COMPENSATION: 'MAK bù chuyến bị hủy',
 };
 
 export const WALLET_LOCK_LABEL: Record<string, string> = {

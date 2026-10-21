@@ -6,7 +6,7 @@ import { useToast } from '../../context/ToastContext';
 import type { AdminUser, Paginated, Role } from '../../types';
 import { formatDateTime } from '../../utils/format';
 
-const ROLE_LABEL: Record<Role, string> = { CUSTOMER: 'Khách', RESTAURANT_OWNER: 'Chủ quán', ADMIN: 'Admin' };
+const ROLE_LABEL: Record<Role, string> = { CUSTOMER: 'Khách', RESTAURANT_OWNER: 'Chủ quán', ADMIN: 'Admin', SHIPPER: 'Tài xế' };
 const PAGE_SIZE = 20;
 
 /** Admin quản lý người dùng (API-9): tìm, lọc, khóa / mở (không khóa được admin) */
@@ -62,7 +62,7 @@ export default function AdminUsersPage() {
 
       <section className="toolbar admin-toolbar">
         <div className="cat-tabs" role="tablist">
-          {([['', 'Tất cả'], ['CUSTOMER', 'Khách'], ['RESTAURANT_OWNER', 'Chủ quán'], ['ADMIN', 'Admin']] as const).map(([k, label]) => (
+          {([['', 'Tất cả'], ['CUSTOMER', 'Khách'], ['RESTAURANT_OWNER', 'Chủ quán'], ['SHIPPER', 'Tài xế'], ['ADMIN', 'Admin']] as const).map(([k, label]) => (
             <button key={k} role="tab" aria-selected={(role ?? '') === k} className={(role ?? '') === k ? 'active' : ''} onClick={() => update({ role: k, page: '' })}>
               {label}
             </button>

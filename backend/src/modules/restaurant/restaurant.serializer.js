@@ -44,6 +44,8 @@ const toPublicRestaurantResponse = (restaurant, viewer) => ({
     openingHours: restaurant.openingHours.map(({ dayOfWeek, open, close }) => ({ dayOfWeek, open, close })),
     minOrderAmount: restaurant.minOrderAmount,
     deliveryRadiusKm: restaurant.deliveryRadiusKm,
+    // PLATFORM: tài xế MAK giao, khách phải chuyển khoản trước khi chọn giao tận nơi
+    deliveryMode: restaurant.deliveryMode || 'SELF',
     avgPrepMinutes: restaurant.avgPrepMinutes,
     ratingAvg: restaurant.ratingAvg,
     ratingCount: restaurant.ratingCount,

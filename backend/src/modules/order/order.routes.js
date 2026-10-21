@@ -7,7 +7,16 @@ const { validate } = require('../../middlewares/validate.middleware');
 const { paginationRules } = require('../../utils/pagination');
 const { textRule, phoneRule } = require('../../utils/validationRules');
 const { ORDER_STATUSES, FULFILLMENT_TYPES, PAYMENT_METHODS } = require('./order.model');
-const { preview, createOrder, listMyOrders, getMyOrder, getMyOrderPayment, cancelMyOrder } = require('./order.controller');
+const {
+    preview,
+    createOrder,
+    listMyOrders,
+    getMyOrder,
+    getMyOrderPayment,
+    getMyOrderTracking,
+    rateMyShipper,
+    cancelMyOrder
+} = require('./order.controller');
 
 // Mount tại /api/orders — đơn của khách (docs/API.md mục 2.6)
 const router = express.Router();
@@ -71,6 +80,17 @@ router.get(
 
 router.get('/:id', [idRule], validate, getMyOrder);
 router.get('/:id/payment', [idRule], validate, getMyOrderPayment);
+router.get('/:id/tracking', [idRule], validate, getMyOrderTracking);
+router.post(
+    '/:id/shipper-rating',
+    [
+        idRule,
+        body('stars').isInt({ min: 1, max: 5 }).withMessage('stars must be 1-5').toInt(),
+        body('comment').optional().isString().trim().isLength({ max: 300 }).withMessage('comment is too long')
+    ],
+    validate,
+    rateMyShipper
+);
 
 router.post(
     '/:id/cancel',

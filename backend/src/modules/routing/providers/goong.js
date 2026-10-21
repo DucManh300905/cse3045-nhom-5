@@ -55,6 +55,30 @@ const getRoute = async (from, to) => {
     };
 };
 
+/**
+ * Ma trận khoảng cách: nhiều điểm đi (tài xế) -> 1 điểm đến (quán) trong MỘT lần gọi (điều phối — BR-92).
+ * @returns [{ distanceKm, durationMinutes } | null] theo đúng thứ tự origins (null: Goong không tìm được đường)
+ */
+const getMatrix = async (origins, destination) => {
+    const data = await goongGet('/DistanceMatrix', {
+        origins: origins.map(latlng).join('|'),
+        destinations: latlng(destination),
+        vehicle: process.env.GOONG_VEHICLE || 'bike'
+    });
+    return origins.map((_, i) => {
+        const el = data.rows?.[i]?.elements?.[0];
+        if (!el?.distance || !el?.duration || (el.status && el.status !== 'OK')) {
+            return null;
+        }
+        return {
+            distanceKm: round1(el.distance.value / 1000),
+            durationMinutes: Math.max(1, Math.ceil(el.duration.value / 60)),
+            source: 'ROUTING',
+            provider: 'goong'
+        };
+    });
+};
+
 // ---- Tra địa chỉ bằng chữ (ô tìm kiếm trên bản đồ) ----
 
 const autocomplete = async (input, near) => {
@@ -89,6 +113,7 @@ module.exports = {
     name: 'goong',
     isConfigured,
     getRoute,
+    getMatrix,
     autocomplete,
     placeDetail,
     reverseGeocode

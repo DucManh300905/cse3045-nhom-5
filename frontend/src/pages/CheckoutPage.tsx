@@ -113,6 +113,14 @@ export default function CheckoutPage() {
   // Đổi địa chỉ -> bỏ điểm đã ghim cho địa chỉ trước
   useEffect(() => { setPin(null); }, [addressId]);
 
+  // Quán giao bằng tài xế MAK: giao tận nơi chỉ nhận chuyển khoản trước (BR-91)
+  // Quán "Theo lịch": server báo đúng lúc này có giao bằng tài xế MAK không (preview.prepaidRequired)
+  const platformDelivery = fulfillment === 'DELIVERY'
+    && (preview ? preview.prepaidRequired : (restaurant?.deliveryModeNow ?? restaurant?.deliveryMode) === 'PLATFORM');
+  useEffect(() => {
+    if (platformDelivery && paymentMethod === 'COD' && methods?.BANK_TRANSFER) setPaymentMethod('BANK_TRANSFER');
+  }, [platformDelivery, paymentMethod, methods]);
+
   // Tiền do server tính (BR-31): gọi lại khi giỏ hoặc hình thức nhận hàng đổi
   useEffect(() => {
     if (!shopId || !items.length) return;
@@ -345,10 +353,21 @@ export default function CheckoutPage() {
               )}
 
               <div className="pay-methods" role="radiogroup" aria-label="Hình thức thanh toán">
-                <button type="button" role="radio" aria-checked={paymentMethod === 'COD'} className={`pay-method ${paymentMethod === 'COD' ? 'active' : ''}`} onClick={() => setPaymentMethod('COD')}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={paymentMethod === 'COD'}
+                  className={`pay-method ${paymentMethod === 'COD' ? 'active' : ''}`}
+                  onClick={() => setPaymentMethod('COD')}
+                  disabled={platformDelivery}
+                >
                   <div>
                     <b>Tiền mặt khi nhận hàng</b>
-                    <small>{fulfillment === 'PICKUP' ? 'Thanh toán tại quán khi lấy món' : 'Thanh toán trực tiếp cho người giao'}</small>
+                    <small>
+                      {platformDelivery
+                        ? 'Không áp dụng: quán giao bằng tài xế MAK, cần chuyển khoản trước'
+                        : fulfillment === 'PICKUP' ? 'Thanh toán tại quán khi lấy món' : 'Thanh toán trực tiếp cho người giao'}
+                    </small>
                   </div>
                 </button>
                 {methods?.BANK_TRANSFER && (
@@ -360,6 +379,14 @@ export default function CheckoutPage() {
                   </button>
                 )}
               </div>
+              {platformDelivery && (
+                <p className={methods?.BANK_TRANSFER ? 'muted small-note' : 'form-error'}>
+                  🛵 {restaurant?.deliveryMode === 'SCHEDULED' && restaurant.platformWindowsToday?.length
+                    ? <>Từ {restaurant.platformWindowsToday.map(w => `${w.start} đến ${w.end}`).join(', ')} quán giao bằng <b>tài xế MAK</b></>
+                    : <>Quán giao bằng <b>tài xế MAK</b></>} — miễn phí ship, theo dõi tài xế trên bản đồ.
+                  {methods?.BANK_TRANSFER ? ' Đơn giao tận nơi thanh toán chuyển khoản trước.' : ' Hiện MAK chưa nhận chuyển khoản, bạn hãy chọn "Tự đến lấy".'}
+                </p>
+              )}
             </section>
 
             <section className="panel summary">

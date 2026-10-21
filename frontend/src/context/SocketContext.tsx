@@ -21,7 +21,7 @@ export interface OrderStatusEvent {
   code: string;
   from?: string;
   to: string;
-  actorType?: 'CUSTOMER' | 'OWNER' | 'ADMIN' | 'SYSTEM';
+  actorType?: 'CUSTOMER' | 'OWNER' | 'ADMIN' | 'SYSTEM' | 'SHIPPER';
   reason?: string;
   at: string;
 }
@@ -32,10 +32,47 @@ export interface RestaurantStatusEvent {
   rejectReason?: string;
 }
 
+/** Bước giao của tài xế đổi (đơn PLATFORM) */
+export interface DeliveryChangedEvent {
+  orderId: string;
+  code: string;
+  status: string;
+  deliveryStatus: string | null;
+  shipper: { fullName: string; phone?: string; licensePlate?: string; vehicleType?: string } | null;
+}
+
+/** Vị trí tài xế của đơn đang giao — chỉ khách + quán của đơn đó nhận được */
+export interface ShipperLocationEvent {
+  orderId: string;
+  lat: number;
+  lng: number;
+  at: string;
+  eta: { minutes: number; target: 'STORE' | 'CUSTOMER'; updatedAt: string } | null;
+}
+
+/** Lời mời nhận đơn (tài xế) — cùng dạng ShipperOffer */
+export interface DispatchOfferEvent {
+  offerId: string;
+  orderId: string;
+  code: string;
+  expiresAt: string;
+}
+
+export interface DispatchCancelledEvent {
+  orderId: string;
+  offerId?: string;
+  code?: string;
+  reason: 'EXPIRED' | 'ORDER_CHANGED' | 'ORDER_CANCELLED' | 'ASSIGNED_TO_OTHER';
+}
+
 interface SocketEvents {
   'order:new': OrderNewEvent;
   'order:status_changed': OrderStatusEvent;
   'restaurant:status_changed': RestaurantStatusEvent;
+  'delivery:changed': DeliveryChangedEvent;
+  'shipper:location': ShipperLocationEvent;
+  'dispatch:offer': DispatchOfferEvent;
+  'dispatch:cancelled': DispatchCancelledEvent;
   /** Thông báo vừa lưu cho chính người dùng này (chuông) */
   'notification:new': AppNotification;
   /** Kết nối lại sau khi mất mạng -> nên tải lại dữ liệu để không sót */

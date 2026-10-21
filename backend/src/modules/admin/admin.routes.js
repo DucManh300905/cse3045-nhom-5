@@ -25,6 +25,8 @@ const { listAdminReviews, hideReview } = require('../review/review.controller');
 const { adminRouter: walletAdminRouter } = require('../wallet/wallet.routes');
 const { adminRouter: paymentAdminRouter } = require('../payment/payment.routes');
 const { adminRouter: voucherAdminRouter } = require('../voucher/voucher.routes');
+const { adminRouter: shipperAdminRouter } = require('../shipper/shipper.routes');
+const { adminRouter: shiftAdminRouter } = require('../shift/shift.routes');
 
 // Mount tại /api/admin — chỉ ADMIN
 const router = express.Router();
@@ -115,7 +117,7 @@ router.patch(
 router.get(
     '/users',
     [
-        query('role').optional().isIn(['CUSTOMER', 'RESTAURANT_OWNER', 'ADMIN']).withMessage('role is not valid'),
+        query('role').optional().isIn(['CUSTOMER', 'RESTAURANT_OWNER', 'ADMIN', 'SHIPPER']).withMessage('role is not valid'),
         query('status').optional().isIn(['ACTIVE', 'BLOCKED']).withMessage('status must be ACTIVE or BLOCKED'),
         query('q').optional().isString().trim().isLength({ max: 100 }),
         ...paginationRules
@@ -163,6 +165,10 @@ router.use(walletAdminRouter);
 router.use(paymentAdminRouter);
 // Voucher MAK (nền tảng chịu) + xem / tắt voucher của quán
 router.use('/vouchers', voucherAdminRouter);
+// Tài xế MAK: duyệt hồ sơ, bản đồ tài xế, điều phối, gán tay, xử lý giao thất bại
+router.use(shipperAdminRouter);
+// Ca tài xế theo ngày, vi phạm, mở khóa sớm
+router.use(shiftAdminRouter);
 
 // ---- Audit log ----
 

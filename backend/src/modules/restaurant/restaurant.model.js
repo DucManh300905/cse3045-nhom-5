@@ -216,6 +216,31 @@ const restaurantSchema = new mongoose.Schema(
             default: null
         },
 
+        // Hình thức giao (Q1, chốt 21/10/2026): SELF = quán tự giao · PLATFORM = tài xế MAK giao
+        // (chỉ nhận đơn giao tận nơi trả trước — BR-91) · SCHEDULED = theo lịch: tài xế MAK trong khung giờ
+        // quán xin và có tài xế đăng ký ca, ngoài khung quán tự giao (BR-98). Chủ quán đổi trên trang Hồ sơ quán.
+        deliveryMode: {
+            type: String,
+            enum: ['SELF', 'PLATFORM', 'SCHEDULED'],
+            default: 'SELF'
+        },
+
+        // Lịch tuần cần tài xế (chế độ SCHEDULED): mặc định cho lịch từng ngày khi quán không trả lời
+        weeklySchedule: {
+            type: [
+                new mongoose.Schema(
+                    {
+                        dayOfWeek: { type: Number, min: 0, max: 6, required: true },
+                        start: { type: String, required: true },
+                        end: { type: String, required: true },
+                        expectedOrders: { type: Number, min: 0, default: 0 }
+                    },
+                    { _id: false }
+                )
+            ],
+            default: []
+        },
+
         // Tài khoản nhận tiền khi quán rút tiền
         bankAccount: {
             bankName: { type: String, trim: true },

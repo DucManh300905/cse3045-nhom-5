@@ -9,12 +9,14 @@ const Restaurant = require('../restaurant/restaurant.model');
 const AppError = require('../../utils/AppError');
 const { canAcceptOrders, toLocalDateKey } = require('../../utils/openingHours');
 const { canOwnerAdvance, OWNER_CANCELLABLE } = require('./orderStateMachine');
-const { emitOrderNew, emitOrderStatusChanged } = require('../../realtime/socket');
+const { emitOrderNew, emitOrderStatusChanged, emitDeliveryChanged } = require('../../realtime/socket');
 const notifications = require('../notification/notification.service');
 const wallet = require('../wallet/wallet.service');
 const payment = require('../payment/payment.service');
 const voucher = require('../voucher/voucher.service');
 const routing = require('../routing/routing.service');
+const dispatch = require('../shipper/dispatch.service');
+const { effectiveDeliveryMode } = require('../shift/shift.query');
 const { fromPoint } = require('../../utils/geo');
 
 // Quán đang nhận đơn (BR-12, BR-13). Quán chưa duyệt coi như không tồn tại với khách.
@@ -54,6 +56,24 @@ const planDelivery = async (restaurant, fulfillmentType, delivery) => {
     // Làm tròn lên 5 phút
     const minutes = (restaurant.avgPrepMinutes || 0) + route.durationMinutes;
     return { route, estimatedDeliveryMinutes: Math.ceil(minutes / 5) * 5 };
+};
+
+/**
+ * Hình thức giao của đơn (Q1): chụp theo chế độ của quán lúc đặt. Đơn tự lấy không có.
+ * Tài xế MAK chỉ nhận đơn trả trước (Q2, BR-91) -> đơn tiền mặt của quán dùng tài xế MAK bị chặn.
+ * Tiền công tài xế (Q4) tính từ quãng đường quán -> khách, MAK trả (Q3).
+ */
+const deliveryTerms = (mode, fulfillmentType, paymentMethod, route) => {
+    if (fulfillmentType !== 'DELIVERY') {
+        return { deliveryMode: undefined, shipperFee: 0 };
+    }
+    const deliveryMode = mode || 'SELF';
+    if (deliveryMode === 'PLATFORM' && paymentMethod !== 'BANK_TRANSFER') {
+        throw new AppError(422, 'PREPAID_REQUIRED', 'This restaurant delivers with MAK drivers: please pay by bank transfer', [
+            { field: 'paymentMethod', msg: 'Bank transfer is required for MAK driver delivery' }
+        ]);
+    }
+    return { deliveryMode, shipperFee: deliveryMode === 'PLATFORM' ? wallet.shipperFeeFor(route?.distanceKm) : 0 };
 };
 
 // Mã đơn theo ngày VN: MAK261006-0001 (bộ đếm nằm trong transaction nên đơn lỗi không làm nhảy số)
@@ -135,8 +155,10 @@ const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, 
         throw new AppError(422, 'PAYMENT_METHOD_UNAVAILABLE', 'Bank transfer is not available right now');
     }
 
-    // Quãng đường + bán kính giao (gọi mạng, trước transaction)
-    const plan = await planDelivery(await findOrderableRestaurant(restaurantId), fulfillmentType, delivery);
+    // Quãng đường + bán kính giao (gọi mạng, trước transaction); hình thức giao thực tế ("Theo lịch" -> theo ca)
+    const orderable = await findOrderableRestaurant(restaurantId);
+    const mode = await effectiveDeliveryMode(orderable);
+    const plan = await planDelivery(orderable, fulfillmentType, delivery);
 
     let order;
 
@@ -147,6 +169,8 @@ const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, 
 
             // 3-4. Kiểm tra món, tùy chọn, tính tiền, đơn tối thiểu
             const draft = await buildOrderDraft(restaurant, inputs, fulfillmentType, session);
+            // Quán giao bằng tài xế MAK: bắt buộc trả trước
+            const terms = deliveryTerms(mode, fulfillmentType, paymentMethod, plan.route);
 
             // 5. Voucher (BR-40..45): tính giảm giá; giữ lượt dùng sau khi tạo đơn (bước 7)
             const applied = await voucher.applyVouchers({
@@ -183,6 +207,8 @@ const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, 
                         delivery: fulfillmentType === 'DELIVERY' ? delivery : undefined,
                         route: plan.route,
                         estimatedDeliveryMinutes: plan.estimatedDeliveryMinutes,
+                        deliveryMode: terms.deliveryMode,
+                        shipperFee: terms.shipperFee,
                         subtotal: draft.subtotal,
                         deliveryFee: draft.deliveryFee,
                         discount: applied.discount,
@@ -248,9 +274,19 @@ const previewOrder = async ({ restaurantId, inputs, fulfillmentType, voucherCode
         paymentMethod
     });
 
+    const deliveryMode = fulfillmentType === 'DELIVERY' ? await effectiveDeliveryMode(restaurant) : null;
+
     return {
         restaurant,
-        draft: { ...draft, ...applied, ...plan, total: draft.subtotal + draft.deliveryFee - applied.discount }
+        draft: {
+            ...draft,
+            ...applied,
+            ...plan,
+            deliveryMode,
+            // Tài xế MAK chỉ nhận đơn trả trước (BR-91)
+            prepaidRequired: deliveryMode === 'PLATFORM',
+            total: draft.subtotal + draft.deliveryFee - applied.discount
+        }
     };
 };
 
@@ -284,14 +320,24 @@ const transitionOrder = async ({ orderId, filter, from, to, actorType, actor, re
 
 /**
  * Chuyển trạng thái có hoàn suất (hủy / từ chối) trong một transaction, rồi báo realtime.
+ * Đơn tài xế MAK: thu hồi lời mời / trả tài xế về rảnh + bù tiền chuyến trong cùng transaction (BR-95).
+ * keepStock: món đã làm xong và mang đi (giao thất bại) -> không hoàn suất
  */
-const transitionAndRelease = async (args) => {
+const transitionAndRelease = async ({ keepStock = false, during, ...args }) => {
     let order;
     let refund = null;
+    let released = null;
+    let extra = null;
 
     await mongoose.connection.transaction(async (session) => {
         order = await transitionOrder({ ...args, session });
-        await releaseStock(order, session);
+        if (!keepStock) {
+            await releaseStock(order, session);
+        }
+        if (dispatch.isPlatformDelivery(order)) {
+            released = await dispatch.releaseDispatch(order, session);
+        }
+        extra = during ? await during(order, session) : null;
         // Trả lượt dùng voucher (BR-43)
         await voucher.releaseVouchers(order, session);
 
@@ -303,11 +349,13 @@ const transitionAndRelease = async (args) => {
         }
     });
 
+    await wallet.afterPosting(extra);
     emitOrderStatusChanged(order);
     await notifications.orderStatusChanged(order);
     if (refund) {
         await notifications.refundCreated(refund, order);
     }
+    await dispatch.afterRelease(order, released, order.cancelReason?.note || 'Đơn đã bị hủy');
     return order;
 };
 
@@ -352,6 +400,67 @@ const acceptByOwner = async ({ orderId, restaurant, userId }) => {
     // Báo 1 lần với trạng thái cuối (khách nhận "quán đã nhận đơn, dự kiến xong lúc ...")
     emitOrderStatusChanged(order);
     await notifications.orderStatusChanged(order);
+
+    // Đơn tài xế MAK: tìm tài xế ngay trong lúc quán làm món (lỗi -> job mỗi 10 giây thử lại)
+    if (dispatch.isPlatformDelivery(order)) {
+        try {
+            order = (await dispatch.startDispatch(order)) ?? order;
+        } catch (error) {
+            console.error('[dispatch] start failed:', error.message);
+        }
+    }
+    return order;
+};
+
+/**
+ * Không tìm được tài xế -> quán chọn tự giao đơn này (Q7): đơn chuyển sang luồng quán tự giao.
+ * Cũng dùng được khi đang tìm (thu hồi lời mời đang chờ).
+ */
+const selfDeliverByOwner = async ({ orderId, restaurant, userId }) => {
+    let order;
+    let released;
+
+    await mongoose.connection.transaction(async (session) => {
+        const current = await Order.findOne({ _id: orderId, restaurant: restaurant._id, placedAt: { $ne: null } }).session(session);
+        if (!current) {
+            throw new AppError(404, 'NOT_FOUND', 'Order not found');
+        }
+        if (!dispatch.isPlatformDelivery(current) || !['SEARCHING', 'NO_SHIPPER'].includes(current.delivery?.status)) {
+            throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Only orders still waiting for a driver can be switched to self-delivery');
+        }
+
+        order = await Order.findOneAndUpdate(
+            { _id: current._id, 'delivery.status': current.delivery.status },
+            {
+                $set: { deliveryMode: 'SELF', shipperFee: 0, 'delivery.status': null },
+                $push: { statusHistory: { from: current.status, to: current.status, actorType: 'OWNER', actor: userId, reason: 'SELF_DELIVERY', at: new Date() } }
+            },
+            { returnDocument: 'after', session }
+        );
+        if (!order) {
+            throw new AppError(409, 'ORDER_TAKEN', 'A driver has just accepted this order');
+        }
+        released = await dispatch.releaseDispatch(current, session, { compensate: false });
+    });
+
+    await dispatch.afterRelease(order, released, 'Quán tự giao đơn này');
+    emitDeliveryChanged(order);
+    return order;
+};
+
+// Quán bấm "Tìm lại tài xế" sau khi không tìm được (NO_SHIPPER -> SEARCHING, lượt tìm mới)
+const redispatch = async ({ orderId, filter = {} }) => {
+    const current = await Order.findOne({ _id: orderId, ...filter });
+    if (!current) {
+        throw new AppError(404, 'NOT_FOUND', 'Order not found');
+    }
+    if (!dispatch.isPlatformDelivery(current) || current.delivery?.status !== 'NO_SHIPPER') {
+        throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'This order is not waiting for a driver');
+    }
+    const order = await dispatch.startDispatch(current);
+    if (!order) {
+        throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'This order is not waiting for a driver');
+    }
     return order;
 };
 
@@ -498,6 +607,9 @@ module.exports = {
     placeOrder,
     previewOrder,
     transitionOrder,
+    transitionAndRelease,
+    selfDeliverByOwner,
+    redispatch,
     cancelByCustomer,
     acceptByOwner,
     rejectByOwner,

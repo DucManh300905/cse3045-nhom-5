@@ -110,7 +110,8 @@ describe('Luồng chuẩn (BR-35, quán tự giao)', () => {
 
         expect([cancel.status, accept.status].sort()).toEqual([200, 409]);
         const final = await Order.findById(order.id);
-        expect(final.statusHistory).toHaveLength(2);
+        // Khách thắng: PLACED -> CANCELLED (2 dòng); quán thắng: PLACED -> ACCEPTED -> PREPARING (3 dòng, luồng rút gọn 19/10)
+        expect(final.statusHistory).toHaveLength(final.status === 'CANCELLED' ? 2 : 3);
         expect(await soldToday()).toBe(final.status === 'CANCELLED' ? 0 : 1);
     });
 });

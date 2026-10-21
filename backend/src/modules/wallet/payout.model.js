@@ -1,14 +1,19 @@
 const mongoose = require('mongoose');
 
-// Yêu cầu rút tiền của quán: tiền bị giữ (PAYOUT_HOLD) ngay khi yêu cầu, admin chuyển khoản rồi xác nhận
+// Yêu cầu rút tiền của quán / tài xế: tiền bị giữ (PAYOUT_HOLD) ngay khi yêu cầu, admin chuyển khoản rồi xác nhận.
+// Mỗi lệnh thuộc đúng một trong hai: restaurant hoặc shipper.
 const PAYOUT_STATUSES = ['REQUESTED', 'PAID', 'REJECTED'];
 
 const payoutSchema = new mongoose.Schema(
     {
         restaurant: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'Restaurant',
-            required: true
+            ref: 'Restaurant'
+        },
+
+        shipper: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Shipper'
         },
 
         requestedBy: {
@@ -49,8 +54,16 @@ const payoutSchema = new mongoose.Schema(
     }
 );
 
-// Mỗi quán chỉ một yêu cầu đang chờ
-payoutSchema.index({ restaurant: 1 }, { unique: true, partialFilterExpression: { status: 'REQUESTED' } });
+// Mỗi quán / mỗi tài xế chỉ một yêu cầu đang chờ.
+// Index cũ `restaurant_1` (không có $exists) chặn nhầm lệnh của tài xế -> xóa bằng npm run migrate:003
+payoutSchema.index(
+    { restaurant: 1 },
+    { name: 'one_pending_per_restaurant', unique: true, partialFilterExpression: { status: 'REQUESTED', restaurant: { $exists: true } } }
+);
+payoutSchema.index(
+    { shipper: 1 },
+    { name: 'one_pending_per_shipper', unique: true, partialFilterExpression: { status: 'REQUESTED', shipper: { $exists: true } } }
+);
 payoutSchema.index({ status: 1, createdAt: -1 });
 
 const Payout = mongoose.model('Payout', payoutSchema);
