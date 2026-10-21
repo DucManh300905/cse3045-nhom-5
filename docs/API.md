@@ -324,6 +324,8 @@ Mọi vai trò đã đăng nhập; chỉ thấy thông báo của chính mình (
 | GET | `/notifications` | 🔑 | Mới nhất trước, `?unread=true`, phân trang; kèm `unreadCount` cho huy hiệu chuông | ✅ |
 | PATCH | `/notifications/:id/read` | 🔑 | Đánh dấu đã đọc | ✅ |
 | PATCH | `/notifications/read-all` | 🔑 | Trả `{ modifiedCount }` | ✅ |
+| GET | `/notifications/unread-counts` | 🔑 | `{ total, byType: { ORDER_NEW: 2, ... } }` — số đỏ trên từng mục menu / tab (FE ánh xạ loại → mục ở `frontend/src/utils/badges.ts`) | ✅ |
+| PATCH | `/notifications/read-types` `{ types: [...] }` | 🔑 | Mở trang / tab nào thì đánh dấu đã đọc thông báo của mục đó; trả `{ modifiedCount }` | ✅ |
 
 | Khi nào | Ai nhận | `type` |
 |---|---|---|
@@ -536,6 +538,7 @@ Kế hoạch + quyết định: file *"MAK Food — Kế hoạch triển khai T�
 |---|---|---|---|
 | POST · GET · PUT | `/shipper/profile` | Tạo / xem / sửa hồ sơ `{ fullName, phone, idNumber?, vehicleType: MOTORBIKE│EBIKE│BICYCLE, licensePlate? }`. Sửa chỉ khi `DRAFT` / `REJECTED` (khác: 409 `SHIPPER_PROFILE_LOCKED`) | ✅ |
 | POST | `/shipper/profile/documents` | multipart `type` (`ID_CARD`, `DRIVER_LICENSE`, `VEHICLE_REGISTRATION`) + `file` — lưu private | ✅ |
+| POST | `/shipper/profile/portrait` | multipart `photo` (ảnh JPG/PNG/WEBP ≤ 5MB, private) — **ảnh chân dung bắt buộc** (BR-104). Hồ sơ chưa nộp / bị từ chối: đổi tự do; đã nộp / đã duyệt: chỉ tải khi chưa có ảnh (409 `SHIPPER_PROFILE_LOCKED`) | ✅ |
 | POST | `/shipper/profile/submit` | `DRAFT│REJECTED → SUBMITTED`; thiếu giấy tờ (xe máy: cả 3 + biển số; xe đạp / xe điện: CCCD) → 422 `PROFILE_INCOMPLETE` | ✅ |
 | PUT | `/shipper/bank-account` | Tài khoản nhận tiền khi rút | ✅ |
 | GET | `/shipper/state` | `{ shipper, offer (lời mời đang chờ — chưa có tên / SĐT khách), activeOrder }` để mở app | ✅ |
@@ -558,6 +561,7 @@ Kế hoạch + quyết định: file *"MAK Food — Kế hoạch triển khai T�
 | PATCH | `/merchant/restaurant/delivery-mode` `{ deliveryMode }` | Nút chọn hình thức giao; `PLATFORM` cần MAK đã bật chuyển khoản (422 `PAYMENT_METHOD_UNAVAILABLE`) | ✅ |
 | POST | `/merchant/orders/:id/self-deliver` · `/redispatch` | Không tìm được tài xế: quán tự giao đơn này · tìm lại | ✅ |
 | GET | `/delivery/orders/:id/proof` | 🔐 Ảnh xác nhận / ảnh giao thất bại (mọi vai trò có liên quan) | ✅ |
+| GET | `/delivery/shippers/:id/portrait` | 🔐 Ảnh chân dung tài xế: admin, chính tài xế, khách / chủ quán có đơn do tài xế đó nhận; người khác 404. Đơn trả kèm `delivery.shipperPortraitUrl`, theo dõi đơn trả `shipper.portraitUrl` | ✅ |
 
 **Admin:**
 
@@ -675,6 +679,7 @@ Mất kết nối: FE tải lại danh sách đơn khi kết nối lại (`useSo
 | `PAYOUT_PENDING` | 409 | Đã có yêu cầu rút đang chờ | ✅ |
 | `BANK_ACCOUNT_REQUIRED` | 422 | Rút tiền khi chưa lưu tài khoản ngân hàng | ✅ |
 | `INSUFFICIENT_BALANCE` | 422 | Rút quá số dư ví | ✅ |
+| `PORTRAIT_REQUIRED` | 409 | Tài xế chưa có ảnh chân dung bật trực tuyến (BR-104) | ✅ |
 | `PREPAID_REQUIRED` | 422 | Quán giao bằng tài xế MAK mà khách chọn tiền mặt cho đơn giao tận nơi (BR-91) | ✅ |
 | `SHIPPER_PROFILE_REQUIRED` / `SHIPPER_PROFILE_EXISTS` / `SHIPPER_PROFILE_LOCKED` | 404 / 409 / 409 | Chưa có / đã có / không sửa được hồ sơ tài xế | ✅ |
 | `SHIPPER_NOT_APPROVED` / `SHIPPER_BLOCKED` | 403 | Hồ sơ tài xế chưa duyệt / bị khóa | ✅ |

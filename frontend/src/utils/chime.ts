@@ -1,6 +1,8 @@
 // Âm báo đơn mới (I2): phát file frontend/public/sounds/ambao.mp3 bằng Web Audio.
 // File không tải được -> dùng tiếng "ding-dong" tổng hợp như trước (quán không bị lỡ đơn).
-// Trình duyệt chỉ cho phát tiếng sau khi người dùng đã bấm vào trang: gọi unlockChime() trong một sự kiện click.
+// Trình duyệt thường chỉ cho phát tiếng sau khi người dùng đã bấm vào trang: gọi unlockChime() trong một sự kiện click.
+// Chrome có thể cho phát luôn không cần bấm (trang hay mở) -> file phải được tải TRƯỚC (preloadChime) và lúc phát
+// mà file chưa xong thì CHỜ file, không phát tiếng cũ (sửa lỗi 21/10/2026: đơn đầu tiên vẫn kêu "ding-dong" cũ).
 
 const CHIME_URL = '/sounds/ambao.mp3';
 /** File dài hơn mức này thì chỉ phát 1 lần (không lặp `times` lần) */
@@ -9,7 +11,30 @@ const REPEAT_MAX_SECONDS = 3;
 let ctx: AudioContext | null = null;
 let buffer: AudioBuffer | null = null;
 let loading: Promise<AudioBuffer | null> | null = null;
+// Dữ liệu file tải sẵn (chưa cần AudioContext) — giải mã khi có AudioContext
+let raw: Promise<ArrayBuffer | null> | null = null;
 let playing: AudioBufferSourceNode[] = [];
+/** Chờ file tối đa bấy nhiêu ms rồi mới dùng tiếng dự phòng */
+const LOAD_WAIT_MS = 4000;
+
+const fetchRaw = () => {
+  raw ??= fetch(CHIME_URL)
+    .then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.arrayBuffer();
+    })
+    .catch(err => {
+      console.warn('[chime] không tải được', CHIME_URL, '- dùng âm báo mặc định:', err);
+      raw = null; // lần sau thử tải lại
+      return null;
+    });
+  return raw;
+};
+
+/** Tải sẵn file âm báo khi mở trang của quán / tài xế (không cần người dùng bấm) */
+export function preloadChime() {
+  fetchRaw();
+}
 
 const getContext = () => {
   if (!ctx) {
@@ -20,19 +45,18 @@ const getContext = () => {
   return ctx;
 };
 
-/** Tải + giải mã file âm báo một lần (lỗi -> null, dùng tiếng dự phòng) */
+/** Giải mã file âm báo một lần (lỗi -> null, dùng tiếng dự phòng) */
 const loadBuffer = (c: AudioContext) => {
-  loading ??= fetch(CHIME_URL)
-    .then(res => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.arrayBuffer();
-    })
-    .then(data => c.decodeAudioData(data))
+  loading ??= fetchRaw()
+    // slice: decodeAudioData "lấy mất" ArrayBuffer, giữ bản gốc để giải mã lại được nếu lỗi
+    .then(data => (data ? c.decodeAudioData(data.slice(0)) : null))
     .then(decoded => (buffer = decoded))
     .catch(err => {
-      console.warn('[chime] không tải được', CHIME_URL, '- dùng âm báo mặc định:', err);
-      loading = null; // lần mở khóa sau thử tải lại
+      console.warn('[chime] không giải mã được', CHIME_URL, '- dùng âm báo mặc định:', err);
       return null;
+    })
+    .finally(() => {
+      if (!buffer) loading = null; // lần sau thử lại
     });
   return loading;
 };
@@ -74,27 +98,32 @@ const playSynth = (c: AudioContext, times: number) => {
  * Phát âm báo. `times`: số lần lặp với âm ngắn; file dài (> 3 giây) chỉ phát 1 lần.
  * Đơn mới đến khi chuông đang kêu -> phát lại từ đầu (không chồng nhiều tiếng).
  */
+const playBuffer = (c: AudioContext, b: AudioBuffer, times: number) => {
+  stopChime();
+  const repeat = b.duration > REPEAT_MAX_SECONDS ? 1 : Math.max(1, times);
+  const start = c.currentTime;
+  for (let i = 0; i < repeat; i++) {
+    const source = c.createBufferSource();
+    source.buffer = b;
+    source.connect(c.destination);
+    source.start(start + i * (b.duration + 0.2));
+    source.onended = () => { playing = playing.filter(s => s !== source); };
+    playing.push(source);
+  }
+};
+
 export function playChime(times = 3) {
   const c = getContext();
   if (!c || c.state !== 'running') return false;
 
-  if (!buffer) {
-    loadBuffer(c); // lần sau sẽ có file
-    playSynth(c, times);
+  if (buffer) {
+    playBuffer(c, buffer, times);
     return true;
   }
 
-  stopChime();
-  const repeat = buffer.duration > REPEAT_MAX_SECONDS ? 1 : Math.max(1, times);
-  const start = c.currentTime;
-  for (let i = 0; i < repeat; i++) {
-    const source = c.createBufferSource();
-    source.buffer = buffer;
-    source.connect(c.destination);
-    source.start(start + i * (buffer.duration + 0.2));
-    source.onended = () => { playing = playing.filter(s => s !== source); };
-    playing.push(source);
-  }
+  // File chưa giải mã xong: chờ file (tối đa LOAD_WAIT_MS); lỗi / quá lâu mới phát tiếng dự phòng
+  const timeout = new Promise<null>(resolve => window.setTimeout(() => resolve(null), LOAD_WAIT_MS));
+  Promise.race([loadBuffer(c), timeout]).then(b => (b ? playBuffer(c, b, times) : playSynth(c, times)));
   return true;
 }
 

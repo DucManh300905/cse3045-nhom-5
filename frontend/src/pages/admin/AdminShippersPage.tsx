@@ -4,6 +4,7 @@ import { getErrorMessage } from '../../api/client';
 import { adminShipperApi } from '../../api/shipper';
 import { shiftApi } from '../../api/schedule';
 import { PenaltyCard } from '../shipper/ShipperShiftsPage';
+import PrivateImage from '../../components/PrivateImage';
 import { useToast } from '../../context/ToastContext';
 import type { AdminShipper, Paginated, PenaltySummary, ShipperDocumentType, ShipperStatus } from '../../types';
 import { formatDateTime } from '../../utils/format';
@@ -239,6 +240,10 @@ export function AdminShipperDetailPage() {
       <div className="wallet-cols">
         <section className="panel">
           <h2>Thông tin</h2>
+          <div className="portrait-row">
+            <PrivateImage url={s.portrait?.url} alt={`Ảnh chân dung ${s.fullName}`} className="portrait-img" fallback={<div className="portrait-img empty">Chưa có ảnh chân dung</div>} />
+            <small className="muted">Đối chiếu khuôn mặt với ảnh CCCD (nút "Xem" ở phần Giấy tờ).</small>
+          </div>
           <dl className="kv">
             <dt>Số điện thoại</dt><dd><a href={`tel:${s.phone}`}>{s.phone}</a></dd>
             <dt>Tài khoản</dt><dd>{contactOf(s) ?? '—'}{typeof s.user === 'object' && s.user.status === 'BLOCKED' ? ' (tài khoản bị khóa)' : ''}</dd>

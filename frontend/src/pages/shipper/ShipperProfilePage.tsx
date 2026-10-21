@@ -8,6 +8,8 @@ import { formatDateTime, PHONE_REGEX } from '../../utils/format';
 import { SHIPPER_STATUS_LABEL, VEHICLE_LABEL, requiredShipperDocuments } from '../../utils/delivery';
 import { useShipper } from './ShipperLayout';
 import { EmailVerifyPanel } from './ShipperShiftsPage';
+import PrivateImage from '../../components/PrivateImage';
+import { compressImage } from '../../utils/delivery';
 
 const DOC_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
 const MAX_FILE = 2 * 1024 * 1024;
@@ -81,6 +83,24 @@ export default function ShipperProfilePage() {
     }
   };
 
+  // Ảnh chân dung: thu nhỏ trước khi gửi (ảnh điện thoại thường vài MB)
+  const uploadPortrait = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy(true);
+    try {
+      setProfile(await shipperApi.uploadPortrait(await compressImage(file, 800, 0.85)));
+      notify('Đã tải ảnh chân dung');
+    } catch (err) {
+      notify(getErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  // Đổi ảnh: khi hồ sơ chưa nộp / bị từ chối; đã duyệt thì chỉ tải khi chưa có ảnh (tài xế cũ)
+  const canChangePortrait = !!profile && (editable || !profile.portrait);
+
   const submit = async () => {
     setBusy(true);
     try {
@@ -118,8 +138,9 @@ export default function ShipperProfilePage() {
                 {docs.map(d => <li key={d.type} className={profile.documents.some(x => x.type === d.type) ? 'ok' : ''}>{d.label}</li>)}
                 {(profile.vehicleType === 'MOTORBIKE') && <li className={needPlate ? '' : 'ok'}>Biển số xe</li>}
                 <li className={profile.emailVerified ? 'ok' : ''}>Email đã xác thực</li>
+                <li className={profile.portrait ? 'ok' : ''}>Ảnh chân dung</li>
               </ul>
-              <button className="btn-primary" disabled={busy || missing.length > 0 || needPlate || !profile.emailVerified} onClick={submit}>Nộp hồ sơ</button>
+              <button className="btn-primary" disabled={busy || missing.length > 0 || needPlate || !profile.emailVerified || !profile.portrait} onClick={submit}>Nộp hồ sơ</button>
             </div>
           )}
         </section>
@@ -163,6 +184,30 @@ export default function ShipperProfilePage() {
       </form>
 
       {profile && (
+        <>
+        <section className="panel portrait-panel">
+          <h2>Ảnh chân dung *</h2>
+          <p className="muted small">
+            Ảnh rõ mặt, nhìn thẳng, không đeo kính râm / khẩu trang. Khách và quán thấy ảnh này khi bạn nhận đơn của họ để nhận ra bạn;
+            admin dùng để đối chiếu với CCCD.
+          </p>
+          {!profile.portrait && profile.status === 'APPROVED' && (
+            <p className="form-error">Bạn cần tải ảnh chân dung mới bật trực tuyến được.</p>
+          )}
+          <div className="portrait-row">
+            <PrivateImage url={profile.portrait?.url} alt="Ảnh chân dung của bạn" className="portrait-img" fallback={<div className="portrait-img empty">Chưa có ảnh</div>} />
+            {canChangePortrait ? (
+              <label className="btn-outline file-btn">
+                {profile.portrait ? 'Chụp / chọn lại' : '📷 Chụp ảnh chân dung'}
+                {/* capture="user": mở camera trước trên điện thoại */}
+                <input type="file" accept="image/*" capture="user" hidden onChange={uploadPortrait} disabled={busy} />
+              </label>
+            ) : (
+              <small className="muted">Đã duyệt — muốn đổi ảnh hãy liên hệ MAK.</small>
+            )}
+          </div>
+        </section>
+
         <section className="panel">
           <h2>Giấy tờ</h2>
           <p className="muted small">Ảnh rõ nét (JPG, PNG, WEBP) hoặc PDF, tối đa 2MB. Giấy tờ chỉ quản trị viên MAK xem được.</p>
@@ -186,6 +231,7 @@ export default function ShipperProfilePage() {
             })}
           </ul>
         </section>
+        </>
       )}
     </div>
   );

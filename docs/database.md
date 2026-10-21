@@ -356,7 +356,8 @@ Index unique một phần `{ order }` khi `status = OFFERED` → mỗi đơn ch�
 **Ví:** loại ví `SHIPPER` (key `shipper:<id>`, trường `shipper`); `walletentries.kind` thêm `SHIPPER_FEE`, `SHIPPER_COMPENSATION`; `payouts` có `restaurant` **hoặc** `shipper`
 (index cũ `restaurant_1` thay bằng `one_pending_per_restaurant` + `one_pending_per_shipper` — chạy `npm run migrate:003` trên DB đã có dữ liệu).
 
-**File private mới:** `uploads/private/shipper-documents/` (giấy tờ tài xế), `uploads/private/delivery-proofs/` (ảnh xác nhận / giao thất bại).
+**File private mới:** `uploads/private/shipper-documents/` (giấy tờ tài xế), `uploads/private/delivery-proofs/` (ảnh xác nhận / giao thất bại),
+`uploads/private/shipper-portraits/` (ảnh chân dung — `shippers.portrait { fileKey, mimeType, uploadedAt }`, thêm 22/10/2026).
 
 ### 3.15 Đăng ký ca: `restaurantdayplans`, `shiftdays`, `shifts`, `shiftassignments`, `driverpenalties` ✅ (22/10/2026)
 

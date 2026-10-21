@@ -7,7 +7,7 @@ import type { TrackPoint } from '../../components/LocationPicker';
 import { useSocketEvent } from '../../context/SocketContext';
 import { useToast } from '../../context/ToastContext';
 import type { ShipperOrder, ShipperState } from '../../types';
-import { playChime, stopChime, unlockChime } from '../../utils/chime';
+import { playChime, preloadChime, stopChime, unlockChime } from '../../utils/chime';
 import { DELIVERY_STATUS_LABEL, compressImage, decodePolyline, etaText } from '../../utils/delivery';
 import { formatPrice } from '../../utils/format';
 import { directionsUrl, formatKm, fromPoint, type LatLng } from '../../utils/geo';
@@ -33,6 +33,8 @@ export default function ShipperHomePage() {
   const pendingAction = useRef<PhotoAction | null>(null);
 
   const approved = profile?.status === 'APPROVED';
+  // Tải sẵn file âm báo cho lời mời nhận đơn
+  useEffect(() => { preloadChime(); }, []);
   const online = state?.shipper.isOnline ?? profile?.isOnline ?? false;
   const order = state?.activeOrder ?? null;
   const offer = order ? null : state?.offer ?? null;
@@ -187,12 +189,14 @@ export default function ShipperHomePage() {
           <small>
             {online
               ? gps.error || (gps.at ? `GPS: ${gps.at.lat.toFixed(5)}, ${gps.at.lng.toFixed(5)}` : 'Đang lấy vị trí GPS...')
-              : blockedUntil
+              : !(state?.shipper ?? profile).portrait
+                ? 'Cần tải ảnh chân dung ở trang Hồ sơ trước khi bật trực tuyến'
+                : blockedUntil
                 ? `Tạm khóa nhận đơn tới ${new Date(blockedUntil).toLocaleString('vi-VN')} (${state?.shipper.dispatchBlockReason === 'WITHDRAWALS' ? 'trả 3 đơn liên tiếp' : 'vi phạm ca làm'}) — xem trang Ca làm`
                 : 'Bật trực tuyến để nhận lời mời giao đơn gần bạn'}
           </small>
         </div>
-        <button className={online ? 'btn-outline' : 'btn-primary'} onClick={toggleOnline} disabled={busy || (!online && !!blockedUntil) || (online && hasOrder)}>
+        <button className={online ? 'btn-outline' : 'btn-primary'} onClick={toggleOnline} disabled={busy || (!online && (!!blockedUntil || !(state?.shipper ?? profile).portrait)) || (online && hasOrder)}>
           {online ? 'Nghỉ' : 'Trực tuyến'}
         </button>
       </section>

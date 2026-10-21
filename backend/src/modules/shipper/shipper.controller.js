@@ -104,6 +104,28 @@ const uploadDocument = asyncHandler(async (req, res) => {
     return ok(res, await withAccount(shipper));
 });
 
+/**
+ * POST /shipper/profile/portrait — multipart "photo" (ảnh chân dung, BR-104).
+ * Hồ sơ chưa nộp / bị từ chối: đổi tự do. Đã nộp / đã duyệt: chỉ tải khi CHƯA có ảnh (tài xế cũ), dùng được ngay.
+ */
+const uploadPortrait = asyncHandler(async (req, res) => {
+    let shipper;
+    try {
+        shipper = await me(req);
+        if (!['DRAFT', 'REJECTED'].includes(shipper.status) && shipper.portrait?.fileKey) {
+            throw new AppError(409, 'SHIPPER_PROFILE_LOCKED', 'Portrait cannot be changed after submission');
+        }
+    } catch (error) {
+        removeFile(req.file.path);
+        throw error;
+    }
+    const old = shipper.portrait?.fileKey;
+    shipper.portrait = { fileKey: `shipper-portraits/${req.file.filename}`, mimeType: req.file.mimetype, uploadedAt: new Date() };
+    await shipper.save();
+    removeFile(old && path.join(PRIVATE_DIR, old));
+    return ok(res, await withAccount(shipper));
+});
+
 // POST /shipper/profile/submit — DRAFT | REJECTED -> SUBMITTED
 const submitProfile = asyncHandler(async (req, res) => {
     const shipper = await me(req);
@@ -114,6 +136,9 @@ const submitProfile = asyncHandler(async (req, res) => {
     const missing = requiredDocuments(shipper.vehicleType)
         .filter((type) => !shipper.documents.some((d) => d.type === type))
         .map((type) => ({ field: 'documents', msg: `Document ${type} is required` }));
+    if (!shipper.portrait?.fileKey) {
+        missing.push({ field: 'portrait', msg: 'A portrait photo is required' });
+    }
     if (shipper.vehicleType === 'MOTORBIKE' && !shipper.licensePlate) {
         missing.push({ field: 'licensePlate', msg: 'License plate is required' });
     }
@@ -317,7 +342,36 @@ const getProof = asyncHandler(async (req, res) => {
     return res.sendFile(filePath);
 });
 
+/**
+ * GET /delivery/shippers/:id/portrait — ảnh chân dung tài xế. Được xem: admin, chính tài xế,
+ * khách / chủ quán có đơn do tài xế này nhận (đang hoặc đã giao). Người khác: 404.
+ */
+const getPortrait = asyncHandler(async (req, res) => {
+    const { userId, role } = req.user;
+    const shipper = await Shipper.findById(req.params.id).select('user portrait');
+    let allowed = false;
+
+    if (shipper?.portrait?.fileKey) {
+        if (role === 'ADMIN') allowed = true;
+        if (role === 'SHIPPER') allowed = String(shipper.user) === userId;
+        if (role === 'CUSTOMER') allowed = Boolean(await Order.exists({ 'delivery.shipper': shipper._id, customer: userId }));
+        if (role === 'RESTAURANT_OWNER') {
+            const restaurant = await Restaurant.findOne({ owner: userId }).select('_id').lean();
+            allowed = Boolean(restaurant && (await Order.exists({ 'delivery.shipper': shipper._id, restaurant: restaurant._id })));
+        }
+    }
+    const filePath = allowed && path.resolve(PRIVATE_DIR, shipper.portrait.fileKey);
+    if (!allowed || !filePath.startsWith(path.resolve(PRIVATE_DIR) + path.sep) || !fs.existsSync(filePath)) {
+        throw new AppError(404, 'NOT_FOUND', 'Portrait not found');
+    }
+    res.set('Cache-Control', 'private, max-age=300');
+    res.type(shipper.portrait.mimeType || 'image/jpeg');
+    return res.sendFile(filePath);
+});
+
 module.exports = {
+    uploadPortrait,
+    getPortrait,
     requiredDocuments,
     createProfile,
     getProfile,

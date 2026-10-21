@@ -10,6 +10,9 @@ require('dotenv').config({ quiet: true });
 require('../config/mongoose');
 
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const { PRIVATE_DIR } = require('../config/storage');
 const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
 const User = require('../modules/user/user.model');
@@ -70,10 +73,22 @@ const prepareAccounts = async () => {
             { upsert: true, returnDocument: 'after' }
         );
         const start = jitter(HOA_LAC, 2);
+        // Ảnh chân dung mẫu (bắt buộc để bật trực tuyến — BR-104)
+        const portraitKey = `shipper-portraits/sim-${i}.png`;
+        fs.mkdirSync(path.join(PRIVATE_DIR, 'shipper-portraits'), { recursive: true });
+        fs.writeFileSync(path.join(PRIVATE_DIR, portraitKey), PHOTO);
         await Shipper.findOneAndUpdate(
             { user: user._id },
             {
-                $set: { status: 'APPROVED', isOnline: false, activeOrder: null, dispatchBlockedUntil: null, location: toPoint(start), locationAt: new Date() },
+                $set: {
+                    status: 'APPROVED',
+                    isOnline: false,
+                    activeOrder: null,
+                    dispatchBlockedUntil: null,
+                    location: toPoint(start),
+                    locationAt: new Date(),
+                    portrait: { fileKey: portraitKey, mimeType: 'image/png', uploadedAt: new Date() }
+                },
                 $setOnInsert: {
                     fullName: `Tài xế ảo ${i}`,
                     phone: `0900000${String(i).padStart(3, '0')}`,

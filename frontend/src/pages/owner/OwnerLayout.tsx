@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useNavigate, useOutletContext } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import { getErrorMessage } from '../../api/client';
 import { merchantApi } from '../../api/merchant';
 import Logo from '../../components/Logo';
 import NotificationBell from '../../components/NotificationBell';
 import { useAuth } from '../../context/AuthContext';
+import { MenuBadge, useMarkCurrentSeen } from '../../context/BadgeContext';
 import { useSocket, useSocketEvent } from '../../context/SocketContext';
 import { useToast } from '../../context/ToastContext';
 import type { MerchantRestaurant } from '../../types';
-import { chimeReady, playChime, unlockChime } from '../../utils/chime';
+import { chimeReady, playChime, preloadChime, unlockChime } from '../../utils/chime';
 import { formatPrice } from '../../utils/format';
 import { STATUS_LABEL, WALLET_LOCK_LABEL } from '../../utils/labels';
 
@@ -29,10 +30,14 @@ export default function OwnerLayout() {
   const { socket, connected } = useSocket();
   const notify = useToast();
   const navigate = useNavigate();
+  // Mở mục nào thì thông báo của mục đó coi như đã xem
+  useMarkCurrentSeen(useLocation().pathname);
   const [restaurant, setRestaurantState] = useState<MerchantRestaurant | null | undefined>(undefined);
   const [error, setError] = useState('');
   const [pendingCount, setPendingCount] = useState(0);
   const [soundOn, setSoundOn] = useState(chimeReady());
+  // Tải sẵn file âm báo: đơn đầu tiên cũng kêu đúng file mp3
+  useEffect(() => { preloadChime(); }, []);
 
   const load = useCallback(() => {
     setError('');
@@ -88,7 +93,7 @@ export default function OwnerLayout() {
   };
 
   const ordersLabel = (
-    <>Đơn hàng{pendingCount > 0 && <span className="nav-badge">{pendingCount}</span>}</>
+    <>Đơn hàng<MenuBadge k="orders" /></>
   );
 
   return (
@@ -98,14 +103,14 @@ export default function OwnerLayout() {
           <Logo />
           <span className="portal-tag">Kênh chủ quán</span>
           <nav className="header-actions">
-            <NavLink to="/owner" end className="nav-link">Hồ sơ quán</NavLink>
+            <NavLink to="/owner" end className="nav-link">Hồ sơ quán<MenuBadge k="profile" /></NavLink>
             <NavLink to="/owner/menu" className="nav-link">Thực đơn</NavLink>
             <NavLink to="/owner/orders" className="nav-link">{ordersLabel}</NavLink>
-            <NavLink to="/owner/reviews" className="nav-link">Đánh giá</NavLink>
+            <NavLink to="/owner/reviews" className="nav-link">Đánh giá<MenuBadge k="reviews" /></NavLink>
             <NavLink to="/owner/dashboard" className="nav-link">Thống kê</NavLink>
             <NavLink to="/owner/vouchers" className="nav-link">Voucher</NavLink>
-            {restaurant?.deliveryMode === 'SCHEDULED' && <NavLink to="/owner/schedule" className="nav-link">Lịch giao</NavLink>}
-            <NavLink to="/owner/wallet" className="nav-link">Ví</NavLink>
+            {restaurant?.deliveryMode === 'SCHEDULED' && <NavLink to="/owner/schedule" className="nav-link">Lịch giao<MenuBadge k="schedule" /></NavLink>}
+            <NavLink to="/owner/wallet" className="nav-link">Ví<MenuBadge k="wallet" /></NavLink>
             <NavLink to="/owner/account" className="nav-link">Tài khoản</NavLink>
             {restaurant && <span className={`status-chip s-${restaurant.status}`}>{STATUS_LABEL[restaurant.status]}</span>}
             {restaurant && (
@@ -131,14 +136,14 @@ export default function OwnerLayout() {
         </div>
         {/* Điện thoại: thanh điều hướng riêng vì .nav-link bị ẩn */}
         <nav className="container owner-tabs">
-          <NavLink to="/owner" end>Hồ sơ quán</NavLink>
+          <NavLink to="/owner" end>Hồ sơ quán<MenuBadge k="profile" /></NavLink>
           <NavLink to="/owner/menu">Thực đơn</NavLink>
           <NavLink to="/owner/orders">{ordersLabel}</NavLink>
-          <NavLink to="/owner/reviews">Đánh giá</NavLink>
+          <NavLink to="/owner/reviews">Đánh giá<MenuBadge k="reviews" /></NavLink>
           <NavLink to="/owner/dashboard">Thống kê</NavLink>
           <NavLink to="/owner/vouchers">Voucher</NavLink>
-          {restaurant?.deliveryMode === 'SCHEDULED' && <NavLink to="/owner/schedule">Lịch giao</NavLink>}
-          <NavLink to="/owner/wallet">Ví</NavLink>
+          {restaurant?.deliveryMode === 'SCHEDULED' && <NavLink to="/owner/schedule">Lịch giao<MenuBadge k="schedule" /></NavLink>}
+          <NavLink to="/owner/wallet">Ví<MenuBadge k="wallet" /></NavLink>
           <NavLink to="/owner/account">Tài khoản</NavLink>
         </nav>
       </header>

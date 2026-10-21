@@ -79,6 +79,14 @@ const shipperSchema = new mongoose.Schema(
             default: []
         },
 
+        // Ảnh chân dung (bắt buộc, BR-104): file private, chỉ khách / quán của đơn tài xế đó giao, admin và chính tài xế xem.
+        // Tự đổi được khi hồ sơ chưa duyệt; đã duyệt thì chỉ tải được khi chưa có ảnh (tài xế cũ).
+        portrait: {
+            fileKey: String,
+            mimeType: String,
+            uploadedAt: Date
+        },
+
         status: {
             type: String,
             enum: SHIPPER_STATUSES,
