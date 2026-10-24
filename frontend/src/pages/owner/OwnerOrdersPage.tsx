@@ -1,0 +1,431 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { getErrorMessage } from '../../api/client';
+import { merchantApi } from '../../api/merchant';
+import { useSocketEvent } from '../../context/SocketContext';
+import { useToast } from '../../context/ToastContext';
+import type { MerchantOrder, OrderStatus, OwnerReasonCode } from '../../types';
+import { formatPrice } from '../../utils/format';
+import { useOwner } from './OwnerLayout';
+import { directionsUrl, formatKm, fromPoint } from '../../utils/geo';
+import { stopChime } from '../../utils/chime';
+import DeliveryTracker from '../../components/DeliveryTracker';
+
+/** Đơn chờ quá thời gian này sẽ bị hệ thống tự hủy (BR-36, backend ORDER_TIMEOUT_MINUTES) */
+const TIMEOUT_MINUTES = 5;
+
+const TABS: { key: string; label: string; statuses: OrderStatus[] }[] = [
+  { key: 'new', label: 'Chờ nhận', statuses: ['PLACED'] },
+  { key: 'active', label: 'Đang làm', statuses: ['ACCEPTED', 'PREPARING', 'READY', 'DELIVERING'] },
+  { key: 'done', label: 'Đã xong', statuses: ['COMPLETED', 'REJECTED', 'CANCELLED'] },
+];
+
+// Lọc phụ trong tab "Đã xong" (22/10/2026) — xem lịch sử dễ hơn
+const DONE_FILTERS: { key: string; label: string; statuses: OrderStatus[] }[] = [
+  { key: 'all', label: 'Tất cả', statuses: ['COMPLETED', 'REJECTED', 'CANCELLED'] },
+  { key: 'completed', label: 'Hoàn thành', statuses: ['COMPLETED'] },
+  { key: 'cancelled', label: 'Đã hủy', statuses: ['CANCELLED'] },
+  { key: 'rejected', label: 'Đã từ chối', statuses: ['REJECTED'] },
+];
+/** Mỗi lần "Xem thêm" tải thêm bấy nhiêu đơn */
+const PAGE_SIZE = 30;
+
+const STATUS_TEXT: Record<OrderStatus, string> = {
+  PENDING_PAYMENT: 'Chờ khách thanh toán',
+  PLACED: 'Chờ nhận',
+  ACCEPTED: 'Đã nhận',
+  PREPARING: 'Đang làm',
+  READY: 'Chờ khách lấy',
+  DELIVERING: 'Đang giao',
+  COMPLETED: 'Hoàn thành',
+  REJECTED: 'Đã từ chối',
+  CANCELLED: 'Đã hủy',
+};
+
+const REASONS: { code: OwnerReasonCode; label: string }[] = [
+  { code: 'OUT_OF_STOCK', label: 'Hết món' },
+  { code: 'OVERLOADED', label: 'Quán đang quá tải' },
+  { code: 'CLOSED', label: 'Quán sắp đóng cửa' },
+  { code: 'OTHER', label: 'Lý do khác' },
+];
+
+const CANCEL_TEXT: Record<string, string> = {
+  CUSTOMER_CHANGED_MIND: 'Khách hủy',
+  TIMEOUT: 'Hệ thống tự hủy (quá giờ không nhận)',
+  OUT_OF_STOCK: 'Hết món',
+  OVERLOADED: 'Quá tải',
+  CLOSED: 'Sắp đóng cửa',
+  OTHER: 'Lý do khác',
+};
+
+/**
+ * Luồng rút gọn (19/10/2026): Nhận đơn (= đang làm) → Đi giao → Đã giao; tự lấy: → Món đã xong → Khách đã lấy.
+ * Nhãn nút cho bước tiếp theo + câu hỏi xác nhận (các bước không quay lại được, tránh bấm nhầm).
+ */
+const nextStep = (o: MerchantOrder): { label: string; confirm?: string } | null => {
+  const pickup = o.fulfillmentType === 'PICKUP';
+  const paid = o.paymentMethod === 'BANK_TRANSFER';
+  // Tài xế MAK: quán chỉ báo làm xong, tài xế tự bấm lấy hàng / đã giao
+  if (o.deliveryMode === 'PLATFORM' && !pickup && o.nextStatus === 'READY') {
+    return { label: 'Món đã xong', confirm: `Đơn ${o.code} đã làm xong?\nTài xế MAK sẽ tới lấy và giao cho khách.` };
+  }
+  switch (o.nextStatus) {
+    case 'PREPARING':
+      return { label: 'Bắt đầu làm' };
+    case 'READY':
+      return { label: 'Món đã xong', confirm: `Đơn ${o.code} đã làm xong? Khách sẽ được báo đến lấy món.` };
+    case 'DELIVERING':
+      return { label: 'Đi giao', confirm: `Đơn ${o.code} đã làm xong và bắt đầu đi giao?\nSau bước này không hủy đơn được nữa.` };
+    case 'COMPLETED':
+      return {
+        label: pickup ? `Khách đã lấy${paid ? '' : ' · Đã thu tiền'}` : `Đã giao${paid ? '' : ' · Đã thu tiền'}`,
+        confirm: `Xác nhận ${pickup ? 'khách đã lấy' : 'đã giao'} đơn ${o.code}${paid ? '' : ` và đã thu ${formatPrice(o.total)} tiền mặt`}?\nĐơn sẽ hoàn thành, không đổi lại được.`,
+      };
+    default:
+      return null;
+  }
+};
+
+const time = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '');
+
+export default function OwnerOrdersPage() {
+  const { restaurant, pendingCount, refreshPending } = useOwner();
+  const notify = useToast();
+  // Tab + lọc phụ nằm trên URL (/owner/orders?tab=done&filter=cancelled): tải lại / quay lại vẫn giữ đúng mục
+  const [params, setParams] = useSearchParams();
+  const tab = TABS.find(t => t.key === params.get('tab')) ?? TABS[0];
+  const doneFilter = DONE_FILTERS.find(f => f.key === params.get('filter')) ?? DONE_FILTERS[0];
+  const statuses = tab.key === 'done' ? doneFilter.statuses : tab.statuses;
+  const setTab = (t: (typeof TABS)[number]) => {
+    const next = new URLSearchParams(params);
+    if (t.key === TABS[0].key) next.delete('tab'); else next.set('tab', t.key);
+    next.delete('filter');
+    setParams(next, { replace: true });
+  };
+  const setDoneFilter = (key: string) => {
+    const next = new URLSearchParams(params);
+    if (key === 'all') next.delete('filter'); else next.set('filter', key);
+    setParams(next, { replace: true });
+  };
+  /** Số trang đã tải ("Xem thêm" tăng lên) */
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [orders, setOrders] = useState<MerchantOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
+  /** Đơn đang mở hộp chọn lý do từ chối / hủy */
+  const [reasonFor, setReasonFor] = useState<{ id: string; action: 'reject' | 'cancel' } | null>(null);
+  const [reason, setReason] = useState<{ code: OwnerReasonCode; note: string }>({ code: 'OUT_OF_STOCK', note: '' });
+  const [now, setNow] = useState(Date.now());
+
+  const statusKey = statuses.join(',');
+  // Tải lại trang 1 -> trang đang xem (giữ danh sách khi có đơn mới / đổi trạng thái)
+  const load = useCallback(async () => {
+    try {
+      const results = await Promise.all(
+        Array.from({ length: pages }, (_, i) => merchantApi.listOrders({ status: statuses, page: i + 1, limit: PAGE_SIZE }))
+      );
+      const seen = new Set<string>();
+      setOrders(results.flatMap(r => r.items).filter(o => !seen.has(o.id) && seen.add(o.id)));
+      setTotal(results[0]?.total ?? 0);
+      setError('');
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusKey, pages]);
+
+  // Đổi tab / lọc -> về trang đầu
+  useEffect(() => { setPages(1); }, [statusKey]);
+
+  useEffect(() => {
+    setLoading(true);
+    load();
+  }, [load]);
+
+  // Đồng hồ đếm ngược cho đơn chờ nhận
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  // Realtime: có đơn mới / đơn đổi trạng thái / vừa kết nối lại -> tải lại tab đang xem
+  useSocketEvent('order:new', () => load());
+  useSocketEvent('order:status_changed', e => {
+    if (e.actorType === 'CUSTOMER' && e.to === 'CANCELLED') notify(`Khách đã hủy đơn ${e.code}`);
+    if (e.actorType === 'SYSTEM') notify(`Đơn ${e.code} bị hủy do quá ${TIMEOUT_MINUTES} phút chưa nhận`);
+    load();
+  });
+  useSocketEvent('reconnected', () => load());
+  // Tài xế MAK: có tài xế nhận / không tìm được tài xế / tài xế tới quán...
+  useSocketEvent('delivery:changed', e => {
+    if (e.deliveryStatus === 'NO_SHIPPER') notify(`Đơn ${e.code}: chưa tìm được tài xế — chọn tự giao hoặc tìm lại`);
+    if (e.deliveryStatus === 'ARRIVED_AT_STORE') notify(`Đơn ${e.code}: tài xế ${e.shipper?.fullName ?? ''} đã tới quán`);
+    load();
+  });
+
+  if (!restaurant) {
+    return (
+      <div className="empty-state">
+        <h2>Bạn chưa có quán</h2>
+        <p>Tạo hồ sơ quán và được duyệt để bắt đầu nhận đơn.</p>
+        <Link to="/owner" className="btn-primary">Tạo quán</Link>
+      </div>
+    );
+  }
+
+  const act = async (o: MerchantOrder, fn: () => Promise<MerchantOrder>, ok: string) => {
+    // Chủ quán đã xử lý đơn -> tắt chuông đang kêu (file âm báo dài)
+    stopChime();
+    setBusyId(o.id);
+    try {
+      await fn();
+      notify(ok);
+      setReasonFor(null);
+    } catch (err) {
+      notify(getErrorMessage(err));
+    } finally {
+      setBusyId(null);
+      load();
+      refreshPending();
+    }
+  };
+
+  const openReason = (id: string, action: 'reject' | 'cancel') => {
+    setReasonFor({ id, action });
+    setReason({ code: action === 'reject' ? 'OUT_OF_STOCK' : 'OVERLOADED', note: '' });
+  };
+
+  return (
+    <>
+      <div className="owner-title-row">
+        <h1 className="page-title">Đơn hàng</h1>
+        <button className="btn-outline" onClick={() => { setLoading(true); load(); }} disabled={loading}>↻ Tải lại</button>
+      </div>
+
+      {!restaurant.canAcceptOrders && (
+        <p className="form-error">
+          Quán hiện <b>không nhận đơn mới</b>
+          {restaurant.status !== 'APPROVED'
+            ? ' (hồ sơ chưa được duyệt).'
+            : restaurant.walletLockedAt
+              ? ' — ví đang âm, nạp tiền ở trang Ví để mở lại.'
+              : !restaurant.isAcceptingOrders
+                ? ' — bật "Đang nhận đơn" ở trang Hồ sơ quán.'
+                : ' (ngoài giờ mở cửa — kiểm tra giờ mở cửa ở trang Hồ sơ quán).'}
+          {' '}Đơn đang dở vẫn xử lý bình thường.
+        </p>
+      )}
+
+      <div className="cat-tabs order-tabs" role="tablist">
+        {TABS.map(t => (
+          <button key={t.key} role="tab" aria-selected={tab.key === t.key} className={tab.key === t.key ? 'active' : ''} onClick={() => setTab(t)}>
+            {t.label}
+            {t.key === 'new' && pendingCount > 0 && <span className="nav-badge">{pendingCount}</span>}
+          </button>
+        ))}
+      </div>
+
+      {tab.key === 'done' && (
+        <div className="cat-tabs order-tabs order-filter" role="tablist" aria-label="Lọc đơn đã xong">
+          {DONE_FILTERS.map(f => (
+            <button key={f.key} role="tab" aria-selected={doneFilter.key === f.key} className={doneFilter.key === f.key ? 'active' : ''} onClick={() => setDoneFilter(f.key)}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {error ? (
+        <div className="empty-state"><h2>Không tải được đơn</h2><p>{error}</p><button className="btn-soft" onClick={load}>Thử lại</button></div>
+      ) : loading && orders.length === 0 ? (
+        <div className="page-loading">Đang tải...</div>
+      ) : orders.length === 0 ? (
+        <div className="empty-state">
+          <h2>{tab.key === 'new' ? 'Chưa có đơn mới' : tab.key === 'active' ? 'Không có đơn đang làm' : doneFilter.key === 'all' ? 'Chưa có đơn nào' : `Không có đơn nào ở mục "${doneFilter.label}"`}</h2>
+          {tab.key === 'new' && <p>Đơn mới sẽ hiện ngay ở đây kèm âm báo — nhớ bấm "Bật âm báo" ở trên.</p>}
+        </div>
+      ) : (
+        <ul className="kitchen-list">
+          {orders.map(o => {
+            const leftMs = new Date(o.placedAt ?? o.createdAt).getTime() + TIMEOUT_MINUTES * 60_000 - now;
+            const busy = busyId === o.id;
+            return (
+              <li key={o.id} className={`panel kitchen-card s-${o.status}`}>
+                <div className="kitchen-head">
+                  <div>
+                    <b>{o.code}</b>
+                    <span className={`status-chip s-${o.status === 'COMPLETED' ? 'APPROVED' : ['REJECTED', 'CANCELLED'].includes(o.status) ? 'REJECTED' : 'SUBMITTED'}`}>
+                      {STATUS_TEXT[o.status]}
+                    </span>
+                    <span className="tag muted-tag">
+                      {o.fulfillmentType === 'PICKUP' ? 'Tự đến lấy' : o.deliveryMode === 'PLATFORM' ? 'Tài xế MAK giao' : 'Giao tận nơi'}
+                    </span>
+                  </div>
+                  <small>
+                    Đặt lúc {time(o.placedAt ?? o.createdAt)}
+                    {o.status === 'PLACED' && (
+                      <b className={leftMs < 60_000 ? 'countdown urgent' : 'countdown'}>
+                        {leftMs > 0
+                          ? ` · tự hủy sau ${Math.floor(leftMs / 60_000)}:${String(Math.floor((leftMs % 60_000) / 1000)).padStart(2, '0')}`
+                          : ' · sắp tự hủy'}
+                      </b>
+                    )}
+                    {o.estimatedReadyAt && ['ACCEPTED', 'PREPARING'].includes(o.status) && <> · dự kiến xong {time(o.estimatedReadyAt)}</>}
+                  </small>
+                </div>
+
+                <ul className="kitchen-items">
+                  {o.items.map(i => (
+                    <li key={i.id}>
+                      <b className="qty">{i.qty}×</b>
+                      <div>
+                        <b>{i.name}</b>
+                        {(i.variant || i.options.length > 0) && (
+                          <small>{[i.variant && `Size ${i.variant.name}`, ...i.options.map(op => op.name)].filter(Boolean).join(' · ')}</small>
+                        )}
+                        {i.note && <small className="item-note">Ghi chú: {i.note}</small>}
+                      </div>
+                      <span>{formatPrice(i.lineTotal)}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="kitchen-meta">
+                  <div>
+                    <small>Khách</small>
+                    <b>{o.delivery?.receiverName ?? o.customer?.fullName ?? '—'}</b>
+                    {(o.delivery?.phone ?? o.customer?.phone) && (
+                      <a href={`tel:${o.delivery?.phone ?? o.customer?.phone}`} className="link-btn">{o.delivery?.phone ?? o.customer?.phone}</a>
+                    )}
+                  </div>
+                  {o.delivery && (
+                    <div>
+                      <small>Giao đến</small>
+                      <b>{o.delivery.addressLine}</b>
+                      {fromPoint(o.delivery.location) && (
+                        <a className="link-btn" href={directionsUrl(fromPoint(o.delivery.location)!)} target="_blank" rel="noreferrer">
+                          🧭 Chỉ đường{o.route ? ` · ${formatKm(o.route.distanceKm)}` : ''}
+                        </a>
+                      )}
+                      {o.delivery.note && <small className="item-note">“{o.delivery.note}”</small>}
+                    </div>
+                  )}
+                  <div className="kitchen-total">
+                    <small>
+                      {o.paymentMethod === 'BANK_TRANSFER' ? 'Khách đã chuyển khoản' : o.paymentStatus === 'PAID' ? 'Đã thu tiền mặt' : 'Thu tiền mặt'}
+                    </small>
+                    <strong>{formatPrice(o.total)}</strong>
+                    {!!o.restaurantDiscount && <small className="muted">Voucher quán −{formatPrice(o.restaurantDiscount)}</small>}
+                    {!!o.platformDiscount && <small className="muted" title="MAK cộng phần này vào ví quán khi đơn hoàn thành">MAK bù +{formatPrice(o.platformDiscount)}</small>}
+                    {o.paymentMethod === 'BANK_TRANSFER' && <span className="tag" title="Khách đã chuyển khoản trước — không thu tiền mặt">Đã thanh toán</span>}
+                  </div>
+                </div>
+
+                <DeliveryTracker order={o} viewer="owner" />
+
+                {o.cancelReason?.code && (
+                  <p className="order-cancelled">
+                    {CANCEL_TEXT[o.cancelReason.code] ?? o.cancelReason.code}{o.cancelReason.note && `: ${o.cancelReason.note}`}
+                  </p>
+                )}
+
+                {reasonFor?.id === o.id ? (
+                  <form
+                    className="reason-form"
+                    onSubmit={e => {
+                      e.preventDefault();
+                      const note = reason.note.trim() || undefined;
+                      act(
+                        o,
+                        () => (reasonFor.action === 'reject' ? merchantApi.rejectOrder(o.id, reason.code, note) : merchantApi.cancelOrder(o.id, reason.code, note)),
+                        reasonFor.action === 'reject' ? `Đã từ chối đơn ${o.code}` : `Đã hủy đơn ${o.code}`
+                      );
+                    }}
+                  >
+                    <div className="form-grid">
+                      <label>
+                        <span>Lý do {reasonFor.action === 'reject' ? 'từ chối' : 'hủy'} *</span>
+                        <select value={reason.code} onChange={e => setReason(r => ({ ...r, code: e.target.value as OwnerReasonCode }))}>
+                          {REASONS.map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span>Ghi chú cho khách</span>
+                        <input value={reason.note} onChange={e => setReason(r => ({ ...r, note: e.target.value }))} maxLength={200} placeholder="vd: Hết gà, mong bạn thông cảm" />
+                      </label>
+                    </div>
+                    <div className="form-actions">
+                      <button type="button" className="btn-outline" onClick={() => setReasonFor(null)}>Quay lại</button>
+                      <button className="btn-primary danger" type="submit" disabled={busy}>
+                        {reasonFor.action === 'reject' ? 'Xác nhận từ chối' : 'Xác nhận hủy đơn'}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="kitchen-actions">
+                    {o.status === 'PLACED' && (
+                      <>
+                        <button className="btn-outline danger-outline" disabled={busy} onClick={() => openReason(o.id, 'reject')}>Từ chối</button>
+                        <button className="btn-primary" disabled={busy} onClick={() => act(o, () => merchantApi.acceptOrder(o.id), `Đã nhận đơn ${o.code}`)}>
+                          {busy ? 'Đang xử lý...' : 'Nhận đơn'}
+                        </button>
+                      </>
+                    )}
+                    {['ACCEPTED', 'PREPARING', 'READY'].includes(o.status) && (
+                      <button className="btn-outline danger-outline" disabled={busy} onClick={() => openReason(o.id, 'cancel')}>Hủy đơn</button>
+                    )}
+                    {o.deliveryMode === 'PLATFORM' && o.delivery?.status === 'NO_SHIPPER' && (
+                      <button className="btn-soft" disabled={busy} onClick={() => act(o, () => merchantApi.redispatch(o.id), `Đang tìm lại tài xế cho ${o.code}`)}>
+                        Tìm lại tài xế
+                      </button>
+                    )}
+                    {o.deliveryMode === 'PLATFORM' && ['SEARCHING', 'NO_SHIPPER'].includes(o.delivery?.status ?? '') && (
+                      <button
+                        className="btn-outline"
+                        disabled={busy}
+                        onClick={() => {
+                          if (!window.confirm(`Quán tự giao đơn ${o.code}? Đơn chuyển sang luồng quán tự giao, không dùng tài xế MAK nữa.`)) return;
+                          act(o, () => merchantApi.selfDeliver(o.id), `${o.code}: quán tự giao`);
+                        }}
+                      >
+                        Tự giao đơn này
+                      </button>
+                    )}
+                    {o.status !== 'PLACED' && o.nextStatus && (() => {
+                      const step = nextStep(o);
+                      if (!step) return null;
+                      return (
+                        <button
+                          className="btn-primary"
+                          disabled={busy}
+                          onClick={() => {
+                            if (step.confirm && !window.confirm(step.confirm)) return;
+                            act(o, () => merchantApi.advanceOrder(o.id, o.nextStatus!), `${o.code}: ${STATUS_TEXT[o.nextStatus!]}`);
+                          }}
+                        >
+                          {busy ? 'Đang xử lý...' : step.label}
+                        </button>
+                      );
+                    })()}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {!error && orders.length > 0 && orders.length < total && (
+        <div className="load-more">
+          <button className="btn-soft" onClick={() => { setLoading(true); setPages(p => p + 1); }} disabled={loading}>
+            {loading ? 'Đang tải...' : `Xem thêm (đang hiện ${orders.length}/${total})`}
+          </button>
+        </div>
+      )}
+    </>
+  );
+}

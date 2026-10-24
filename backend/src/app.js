@@ -1,0 +1,93 @@
+// Phải nạp trước các route (route require model) để plugin toJSON áp dụng cho mọi schema
+require('./config/mongoose');
+
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+
+const { notFound, errorHandler } = require('./middlewares/error.middleware');
+const authRoutes = require('./modules/auth/auth.routes');
+const userRoutes = require('./modules/user/user.routes');
+const merchantRestaurantRoutes = require('./modules/restaurant/restaurant.merchant.routes');
+const adminRoutes = require('./modules/admin/admin.routes');
+const { categoryRouter, menuItemRouter } = require('./modules/menu/menu.merchant.routes');
+const publicRoutes = require('./modules/public.routes');
+const orderRoutes = require('./modules/order/order.routes');
+const merchantOrderRoutes = require('./modules/order/order.merchant.routes');
+const notificationRoutes = require('./modules/notification/notification.routes');
+const merchantReviewRoutes = require('./modules/review/review.merchant.routes');
+const merchantReportRoutes = require('./modules/report/report.merchant.routes');
+const walletRoutes = require('./modules/wallet/wallet.routes');
+const paymentRoutes = require('./modules/payment/payment.routes');
+const voucherRoutes = require('./modules/voucher/voucher.routes');
+const geoRoutes = require('./modules/routing/geo.routes');
+const shipperRoutes = require('./modules/shipper/shipper.routes');
+const shiftRoutes = require('./modules/shift/shift.routes');
+const { PUBLIC_DIR, PUBLIC_URL_PREFIX } = require('./config/storage');
+
+const app = express();
+
+// Chạy sau nginx / Cloudflare: TRUST_PROXY=1 để lấy đúng IP người dùng (rate limit theo IP)
+app.set('trust proxy', Number(process.env.TRUST_PROXY) || false);
+
+// Header bảo mật: nosniff, chống nhúng iframe, HSTS... Ảnh /uploads cho phép trang khác origin
+// (frontend dev chạy ở cổng 5173) hiển thị.
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+
+app.use(
+    cors({
+        origin: process.env.CLIENT_URL || 'http://localhost:5173'
+    })
+);
+// Giới hạn body JSON để chặn request khổng lồ
+app.use(express.json({ limit: '100kb' }));
+
+// Ảnh quán/món (giấy tờ pháp lý nằm ở thư mục private, không public)
+app.use(PUBLIC_URL_PREFIX, express.static(PUBLIC_DIR));
+
+app.get('/api/health', (req, res) => {
+    res.json({
+        success: true,
+        message: 'Food Ordering Backend is running'
+    });
+});
+
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+// Khách xem quán và món (không cần đăng nhập)
+app.use('/api/restaurants', publicRoutes.restaurantRouter);
+app.use('/api/menu-items', publicRoutes.menuItemRouter);
+// Chủ quán quản lý quán của mình (trước đây là /api/restaurants/my-restaurant)
+// Đơn của khách
+app.use('/api/orders', orderRoutes);
+// Bản đồ: tra địa chỉ bằng chữ (proxy Goong, giấu khóa)
+app.use('/api/geo', geoRoutes);
+// Voucher khách dùng được ở một quán
+app.use('/api/vouchers', voucherRoutes.customerRouter);
+// Thanh toán: phương thức đang bật + webhook SePay (xác thực bằng API key, không dùng JWT)
+app.use('/api/payments', paymentRoutes.publicRouter);
+// Thông báo trong app (mọi vai trò)
+app.use('/api/notifications', notificationRoutes);
+// Tài xế MAK: hồ sơ, trực tuyến, nhận đơn, các bước giao, thu nhập
+app.use('/api/shipper', shipperRoutes.shipperRouter);
+// Ảnh xác nhận giao hàng: khách / quán / tài xế của đơn và admin
+app.use('/api/delivery', shipperRoutes.deliveryRouter);
+app.use('/api/merchant/restaurant', merchantRestaurantRoutes);
+app.use('/api/merchant/categories', categoryRouter);
+app.use('/api/merchant/menu-items', menuItemRouter);
+app.use('/api/merchant/orders', merchantOrderRoutes);
+app.use('/api/merchant/reviews', merchantReviewRoutes);
+app.use('/api/merchant/reports', merchantReportRoutes);
+app.use('/api/merchant/wallet', walletRoutes.merchantRouter);
+app.use('/api/merchant/vouchers', voucherRoutes.merchantRouter);
+// Quán "Theo lịch": lịch tuần, lịch ngày, tình trạng ca tài xế
+app.use('/api/merchant/schedule', shiftRoutes.merchantRouter);
+app.use('/api/admin', adminRoutes);
+
+// 404 cho route không tồn tại
+app.use(notFound);
+
+// Xử lý lỗi chung (phải đặt cuối cùng)
+app.use(errorHandler);
+
+module.exports = app;

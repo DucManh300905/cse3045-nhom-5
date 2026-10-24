@@ -16,7 +16,7 @@ Hệ thống cung cấp nền tảng kết nối giữa **khách hàng và các 
 - Áp dụng kiến thức về phát triển Web, Database và Software Engineering.
 ## Thành viên nhóm
 1. An Đức Mạnh - 23110310
-2. Trương An - 23110310
+2. Trương An - 23110142
 3. Lương Minh Khánh - 23110181
 ## Pre-mortem – Những lý do dự án có thể thất bại
 

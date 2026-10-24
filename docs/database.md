@@ -1,0 +1,508 @@
+# Thiết kế Database — MAK Food and Drink
+
+> MongoDB + Mongoose 9. Tài liệu liên quan: [project.md](project.md) (nghiệp vụ, mã `BR-xx`) · [API.md](API.md)
+> **Cập nhật lần cuối: 06/10/2026** — sau Bước 6b.
+
+Ký hiệu: ✅ đã có trong code · 🟡 có nhưng còn thiếu · ⬜ chưa làm · ⏭️ sau MVP
+
+Model nằm ở `backend/src/modules/<module>/*.model.js`. Tên collection thực tế do Mongoose tự đặt (chữ thường, số nhiều): `users`, `restaurants`, `menucategories`, `menuitems`, `auditlogs`…
+
+---
+
+## 1. Nguyên tắc thiết kế
+
+1. **Tiền là số nguyên VND** (`Number` nguyên, validate `Number.isInteger`) — không dùng float (BR-21, BR-50). ✅ áp dụng cho quán và menu.
+2. **Nhúng (embed) khi dữ liệu luôn đọc cùng cha và không tăng vô hạn**: địa chỉ trong user, giờ mở cửa + giấy tờ trong quán, biến thể/topping trong món, dòng đơn và lịch sử trạng thái trong đơn.
+   **Tách collection** khi cần truy vấn độc lập hoặc tăng không giới hạn: món, đơn, đánh giá, thông báo, audit log.
+3. **Snapshot** tên/giá món, tỷ lệ hoa hồng vào đơn tại lúc đặt (BR-33, BR-51).
+4. **Xóa mềm** cho dữ liệu đã được đơn tham chiếu (`isDeleted`, BR-24). ✅
+5. Mọi collection có `timestamps: true` (`createdAt`, `updatedAt`) — trừ `auditlogs` chỉ có `createdAt`.
+6. Giá trị enum viết HOA, khớp với `frontend/src/types.ts`.
+7. Thao tác nhiều document liên quan tiền/tồn kho dùng **transaction** (`session.withTransaction`) → MongoDB phải chạy **replica set** (Atlas có sẵn; local: `mongod --replSet rs0` rồi `rs.initiate()`). Test đã chạy replica set trong RAM (mongodb-memory-server). ✅
+8. **Plugin `toJSON` dùng chung** (`config/mongoose.js`): mọi document trả JSON có `id` thay cho `_id`, bỏ `__v`, không bao giờ có `password`. ✅
+9. **Tìm không dấu**: lưu thêm `nameNoAccent` (tự sinh trong `pre('validate')`) cho quán và món, tìm bằng regex. ✅
+
+---
+
+## 2. Sơ đồ quan hệ (ERD rút gọn)
+
+```
+users 1 ──── 0..1 restaurants            (owner, BR-10)            ✅
+users 1 ──── n    orders                 (customer)                ⬜
+restaurants 1 ── n menucategories 1 ── n menuitems                 ✅
+restaurants 1 ── n orders ── (snapshot) menuitems                  ⬜
+restaurants 1 ── n vouchers ◀── 0..2 orders (voucher quán + MAK)    ✅
+orders 1 ──── 0..1 reviews                                         ⬜
+users 1 ──── n notifications                                       ⬜
+users 1 ──── n auditlogs                 (actor)                   ✅
+```
+
+---
+
+## 3. Các collection MVP
+
+### 3.1 `users` ✅
+
+File: `modules/user/user.model.js`
+
+| Field | Kiểu | Ràng buộc | Ghi chú | |
+|---|---|---|---|---|
+| `email` | String | unique, sparse, lowercase | | ✅ |
+| `phone` | String | unique, sparse, dạng `0xxxxxxxxx` | BR-02 | ✅ |
+| `password` | String | required, hash bcrypt | không bao giờ trả ra JSON | ✅ |
+| `fullName` | String | required | | ✅ |
+| `role` | enum `CUSTOMER` `RESTAURANT_OWNER` `ADMIN` | default `CUSTOMER` | | ✅ |
+| `status` | enum `ACTIVE` `BLOCKED` | default `ACTIVE` | BR-04 | ✅ |
+| `avatarUrl` | String | | | ✅ |
+| `addresses` | `[Address]` (nhúng) | tối đa 5 (`MAX_ADDRESSES`) | BR-06 | ✅ |
+| `passwordChangedAt` | Date | | token có `iat` trước mốc này bị từ chối (BR-05) | ✅ |
+
+`Address` (subdocument, có `_id`): `{ label, receiverName (required), phone (required), addressLine (required), location?: GeoPoint, isDefault }`
+
+Ràng buộc: phải có email hoặc phone (`pre('validate')`) ✅ — nên không xóa được SĐT của tài khoản không có email (BR-07).
+
+### 3.2 `restaurants` ✅
+
+File: `modules/restaurant/restaurant.model.js`
+
+| Field | Kiểu | Ràng buộc | Ghi chú | |
+|---|---|---|---|---|
+| `owner` | ObjectId → users | required, **unique** | BR-10 | ✅ |
+| `name` | String | required | | ✅ |
+| `nameNoAccent` | String | tự sinh | tìm không dấu | ✅ |
+| `slug` | String | unique, sparse | sinh 1 lần lúc tạo, không đổi theo tên (BR-17) | ✅ |
+| `description` | String | | | ✅ |
+| `address` | String | required | | ✅ |
+| `phone` | String | required | đã chuẩn hóa | ✅ |
+| `location` | GeoPoint `{ type:'Point', coordinates:[lng,lat] }` | 2dsphere (sparse) | | ✅ |
+| `logoUrl`, `coverUrl` | String | | URL `/uploads/restaurants/...` | ✅ |
+| `cuisineTypes` | [String] | ≤ 10 | ví dụ `["COM","BUN_PHO","DO_UONG"]` | ✅ |
+| `status` | enum `DRAFT` `SUBMITTED` `APPROVED` `REJECTED` `BLOCKED` | default `DRAFT` | BR-11 | ✅ |
+| `rejectReason` | String | | xóa khi nộp lại / được duyệt | ✅ |
+| `submittedAt`, `approvedAt` | Date | | | ✅ |
+| `approvedBy` | ObjectId → users | | admin duyệt | ✅ |
+| `documents` | `[{ type: 'BUSINESS_LICENSE'│'FOOD_SAFETY'│'ID_CARD', fileKey, originalName, mimeType, uploadedAt }]` | mỗi loại 1 file | `fileKey` = đường dẫn trong thư mục private, **không bao giờ trả ra API** (BR-18) | ✅ |
+| `isAcceptingOrders` | Boolean | default `false` | BR-13, admin khóa → `false` (BR-16) | ✅ |
+| `openingHours` | `[{ dayOfWeek: 0-6, open: 'HH:mm', close: 'HH:mm' }]` | ≤ 21 khung, không chồng nhau, `open < close` | giờ VN, 0 = Chủ nhật | ✅ |
+| ~~`deliveryFee`~~ | — | **Đã bỏ** (06/10/2026): quán tự giao, miễn phí giao cho khách | | ✅ |
+| `minOrderAmount` | Int | ≥ 0, default 0 | | ✅ |
+| `deliveryRadiusKm` | Number | 0.5 – 30, default 5 | | ✅ |
+| `avgPrepMinutes` | Int | 1 – 180, default 15 | | ✅ |
+| `commissionRate` | Number (0–1) | default 0.1 | chỉ admin sửa (BR-51) | ✅ |
+| `ratingAvg`, `ratingCount` | Number, Int | default 0 | cập nhật khi có đánh giá | ✅ field · ⬜ logic |
+| `stats` | `{ acceptedCount, rejectedCount, cancelledByStoreCount }` | | G3 — làm cùng module đơn | ⬜ |
+
+Index: `{ owner: 1 } unique` ✅, `{ slug: 1 } unique sparse` ✅, `{ status: 1 }` ✅, `{ location: '2dsphere' } sparse` ✅, text index `{ name, description }` ✅.
+
+### 3.3 `menucategories` ✅
+
+File: `modules/menu/menuCategory.model.js`
+
+| Field | Kiểu | Ràng buộc | |
+|---|---|---|---|
+| `restaurant` | ObjectId → restaurants | required | ✅ |
+| `name` | String | required | ✅ |
+| `sortOrder` | Int | default 0; tạo mới → cuối danh sách | ✅ |
+| `isActive` | Boolean | default true; `false` → ẩn cả nhóm món với khách | ✅ |
+
+Index: `{ restaurant: 1, name: 1 } unique` với **collation `{ locale: 'vi', strength: 2 }`** (không phân biệt hoa thường, BR-25) ✅, `{ restaurant: 1, sortOrder: 1 }` ✅.
+
+### 3.4 `menuitems` ✅
+
+File: `modules/menu/menuItem.model.js`
+
+| Field | Kiểu | Ràng buộc | Ghi chú | |
+|---|---|---|---|---|
+| `restaurant` | ObjectId → restaurants | required | lưu trùng để query nhanh + check ownership | ✅ |
+| `category` | ObjectId → menucategories | required | phải cùng quán (BR-20, kiểm tra ở controller) | ✅ |
+| `name` | String | required | | ✅ |
+| `nameNoAccent` | String | tự sinh | tìm không dấu | ✅ |
+| `description` | String | ≤ 1000 | | ✅ |
+| `imageUrl` | String | | `/uploads/menu-items/...` hoặc URL ngoài (seed dùng Unsplash) | ✅ |
+| `type` | enum `FOOD` `DRINK` | default `FOOD` | khớp `DishCategory` ở FE | ✅ |
+| `basePrice` | Int | ≥ 0, required | có biến thể → tự = giá biến thể mặc định (BR-21) | ✅ |
+| `tags` | [String] | ≤ 10 | `SPICY`, `VEGETARIAN`… | ✅ |
+| `variants` | `[{ _id, name, price, isDefault }]` | ≤ 10; luôn đúng 1 `isDefault` | BR-26 | ✅ |
+| `optionGroups` | `[OptionGroup]` | ≤ 10 | BR-22 | ✅ |
+| `isAvailable` | Boolean | default true | bật/tắt tay | ✅ |
+| `dailyLimit` | Int \| null | null = không giới hạn | BR-23 | ✅ |
+| `soldToday` | Int | default 0 | tăng khi đặt đơn ⬜, reset 00:00 ⬜ | 🟡 |
+| `prepMinutes` | Int | 1 – 180 | FE `Dish.prepMinutes` | ✅ |
+| `sortOrder` | Int | | tạo mới / đổi danh mục → cuối danh mục | ✅ |
+| `soldCount` | Int | default 0 | tổng đã bán — sắp xếp "bán chạy" (thay `popularity` của FE) | ✅ |
+| `isDeleted` | Boolean | default false | BR-24 | ✅ |
+
+`OptionGroup` (có `_id`): `{ name, minSelect (≥0, default 0), maxSelect (≥1, default 1), options: [{ _id, name, price, isAvailable }] (≥ 1) }` — `pre('validate')` kiểm tra `minSelect ≤ maxSelect ≤ options.length` ✅.
+
+Index: `{ restaurant: 1, category: 1, sortOrder: 1 }` ✅, `{ restaurant: 1, isDeleted: 1, isAvailable: 1 }` ✅, text index `{ name, nameNoAccent, description }` ✅.
+
+Giá trị tính (không lưu, do `menu.serializer.js` trả ra):
+- `remainingToday` = `dailyLimit - soldToday` (≥ 0), `null` nếu không giới hạn.
+- `isOrderable` = `isAvailable && !isDeleted && remainingToday !== 0`.
+
+> Ánh xạ sang FE: `stock` = `remainingToday` (null = ∞), `shop` = `restaurant.name`, `popularity` = `soldCount`, `closesAt` = giờ đóng cửa hôm nay trong `openingHours` của quán.
+
+### 3.5 `orders` ✅
+
+File: `modules/order/order.model.js` · tính tiền `order.pricing.js` · đặt / hủy / chuyển trạng thái `order.service.js`.
+
+| Field | Kiểu | Ghi chú |
+|---|---|---|
+| `code` | String unique | mã hiển thị, ví dụ `MAK261006-0042` (FE đang dùng `'MAK' + ...`) |
+| `customer` | ObjectId → users | |
+| `restaurant` | ObjectId → restaurants | BR-30 |
+| `restaurantSnapshot` | `{ name, phone, address }` | |
+| `items` | `[OrderItem]` | BR-33 |
+| `fulfillmentType` | enum `DELIVERY` `PICKUP` | D9 |
+| `delivery` | `{ receiverName, phone, addressLine, location?, note }` | bắt buộc khi DELIVERY |
+| `subtotal` | Int | Σ `lineTotal` |
+| `deliveryFee` | Int | luôn 0 — miễn phí giao (giữ field để báo cáo không đổi cấu trúc) |
+| `discount` | Int | từ voucher |
+| `total` | Int | `subtotal + deliveryFee - discount` |
+| `voucher` | `{ voucherId, code, discount }` \| null | |
+| `commissionRate` | Number | snapshot |
+| `commissionAmount` | Int | BR-51 |
+| `paymentMethod` | enum `COD` (`VNPAY` ⏭️) | |
+| `paymentStatus` | enum `UNPAID` `PAID` `REFUNDED` | BR-39 |
+| `status` | enum `PLACED` `ACCEPTED` `REJECTED` `PREPARING` `READY` `DELIVERING` `COMPLETED` `CANCELLED` | BR-35 |
+| `statusHistory` | `[{ from, to, actorType: 'CUSTOMER'│'OWNER'│'ADMIN'│'SYSTEM', actor?, reason?, at }]` | thay cho collection `OrderStatusHistory` của docx |
+| `cancelReason` | `{ code, note }` | `OUT_OF_STOCK`, `OVERLOADED`, `CLOSED`, `CUSTOMER_CHANGED_MIND`, `TIMEOUT`, `OTHER` |
+| `estimatedReadyAt` | Date | = acceptedAt + avgPrepMinutes |
+| `placedAt`, `acceptedAt`, `completedAt`, `cancelledAt` | Date | phục vụ báo cáo |
+| `isReviewed` | Boolean | Không dùng (đánh giá theo quán từ 08/10) |
+
+`OrderItem`: `{ menuItem (ObjectId), name, imageUrl, variant?: { _id, name, price }, options: [{ _id, groupName, name, price }], unitPrice, qty, lineTotal, note }`
+với `unitPrice = (variant.price ?? basePrice) + Σ options.price`, `lineTotal = unitPrice × qty`.
+
+Index:
+- `{ code: 1 } unique`
+- `{ customer: 1, createdAt: -1 }` — lịch sử đơn của khách
+- `{ restaurant: 1, status: 1, createdAt: -1 }` — màn nhận đơn của quán
+- `{ status: 1, placedAt: 1 }` — job timeout (BR-36)
+- `{ restaurant: 1, completedAt: -1 }` — báo cáo doanh thu
+
+### 3.6 `idempotencykeys` ✅
+
+Mã đơn dùng thêm collection `counters` (`{ _id: 'order:261006', seq }`, tăng trong cùng transaction).
+
+| Field | Kiểu | Ghi chú |
+|---|---|---|
+| `key` | String | header `Idempotency-Key` |
+| `user` | ObjectId | |
+| `order` | ObjectId → orders | |
+| `createdAt` | Date | **TTL index 24h** (`expireAfterSeconds: 86400`) |
+
+Index: `{ user: 1, key: 1 } unique` (BR-38).
+
+### 3.7 `vouchers` + `voucherredemptions` ✅ (19/10/2026)
+
+File: `modules/voucher/voucher.model.js`, `voucherRedemption.model.js`.
+
+| Field | Kiểu | Ghi chú |
+|---|---|---|
+| `code` | String uppercase, **unique toàn hệ thống** | 4–20 chữ / số |
+| `description` | String | Khách thấy |
+| `fundedBy` | enum `PLATFORM` `RESTAURANT` | Ai chịu tiền giảm |
+| `restaurant` | ObjectId | Bắt buộc với `RESTAURANT` |
+| `restaurants` | [ObjectId] | `PLATFORM`: rỗng = mọi quán |
+| `type` | enum `PERCENT` `FIXED` | |
+| `value` | Int | % (1–100) hoặc số tiền |
+| `maxDiscount` | Int \| null | bắt buộc với PERCENT (BR-41) |
+| `minOrderAmount` | Int | so với tạm tính |
+| `paymentMethods` | [enum `COD` `BANK_TRANSFER`] | phương thức khách phải chọn để dùng được; mặc định cả hai, không rỗng |
+| `usageLimit` | Int \| null | null = không giới hạn |
+| `usedCount` | Int | tăng / giảm nguyên tử (BR-42, 43) |
+| `perUserLimit` | Int | mặc định 1 |
+| `startAt`, `endAt` | Date | |
+| `isActive` | Boolean | |
+| `createdBy` | ObjectId → users | |
+
+Index: `code` unique, `{ fundedBy: 1, isActive: 1, endAt: 1 }`, `{ restaurant: 1, createdAt: -1 }`.
+
+**`voucherredemptions`** — một lượt dùng: `{ voucher, customer, order, slot, discount, active }`.
+`slot` = thứ tự lượt đang hiệu lực của khách với voucher; index **unique một phần** `{ voucher, customer, slot }` khi `active: true` → hai đơn đặt song song không vượt `perUserLimit`. Đơn hủy → `active: false`.
+
+**Thêm vào `orders`:** `restaurantDiscount`, `platformDiscount` (Int, mặc định 0), `vouchers: [{ voucher, code, fundedBy, type, value, discount }]`; `discount` = tổng hai phần.
+
+### 3.8 `reviews` ✅ (đổi 08/10/2026: đánh giá theo quán, không theo đơn)
+
+File: `modules/review/review.model.js` · tính điểm: `review.service.js`.
+
+| Field | Kiểu | Ghi chú |
+|---|---|---|
+| `restaurant`, `customer` | ObjectId | **unique cặp** — 1 đánh giá / khách / quán (BR-60) |
+| `rating` | Int 1–5 | |
+| `comment` | String | ≤ 1000 ký tự, hiện công khai |
+| `images` | [String] | ⏭️ |
+| `reply` | `{ content, repliedAt }` | BR-61 |
+| `isHidden`, `hiddenReason` | Boolean, String | admin ẩn vi phạm: không hiện, không tính điểm |
+| `createdAt`, `updatedAt` | Date | |
+
+Index: `{ restaurant: 1, customer: 1 } unique`, `{ restaurant: 1, isHidden: 1, updatedAt: -1 }`.
+
+Trên `restaurants`: `ratingAvg` (TB cộng, 1 chữ số), `ratingCount`, `ratingScore` = `(n×avg + 5×3.5)/(n+5)` (mặc định 3.5) + index `{ status: 1, ratingScore: -1 }`. Quán có sẵn: `npm run migrate:002`.
+
+### 3.9 `notifications` ✅
+
+File: `modules/notification/notification.model.js` · tạo + đẩy realtime: `notification.service.js`.
+
+`{ user, type: 'ORDER_NEW'│'ORDER_STATUS'│'RESTAURANT_SUBMITTED'│'RESTAURANT_APPROVED'│'RESTAURANT_REJECTED'│'RESTAURANT_BLOCKED'│'RESTAURANT_UNBLOCKED'│'REVIEW_NEW'│'WALLET_*'│'TOPUP_*'│'PAYOUT_*'│'PAYMENT_ISSUE'│'PAYMENT_UNMATCHED'│'REFUND_REQUESTED'│'REFUND_DONE', title, body, data: { orderId?, restaurantId?, code?, link? }, isRead, createdAt }`
+Index: `{ user: 1, isRead: 1, createdAt: -1 }`; TTL 90 ngày trên `createdAt` ✅.
+
+### 3.10 `auditlogs` ✅
+
+File: `modules/audit/auditLog.model.js` · ghi bằng `recordAudit(req, {...})` trong `modules/audit/audit.service.js`.
+
+| Field | Kiểu | Ghi chú |
+|---|---|---|
+| `actor` | ObjectId → users | lấy từ `req.user` |
+| `actorRole` | enum `CUSTOMER` `RESTAURANT_OWNER` `ADMIN` `SYSTEM` | |
+| `action` | String | xem bảng dưới |
+| `targetType`, `targetId` | String, ObjectId | ví dụ `Restaurant`, `MenuItem` |
+| `before`, `after` | Mixed | giá trị trước/sau |
+| `note` | String | lý do (từ chối, khóa…) |
+| `ip` | String | |
+| `createdAt` | Date | không có `updatedAt` |
+
+**Chỉ ghi thêm (BR-70):** `pre` hook chặn `updateOne/updateMany/findOneAndUpdate/deleteOne/deleteMany/findOneAndDelete`.
+
+Index: `{ targetType: 1, targetId: 1, createdAt: -1 }`, `{ action: 1, createdAt: -1 }`.
+
+| `action` | Khi nào | |
+|---|---|---|
+| `RESTAURANT_APPROVE` / `RESTAURANT_REJECT` | Admin duyệt / từ chối hồ sơ | ✅ |
+| `RESTAURANT_BLOCK` / `RESTAURANT_UNBLOCK` | Admin khóa / mở quán | ✅ |
+| `RESTAURANT_COMMISSION_CHANGE` | Admin đổi hoa hồng | ✅ |
+| `MENU_PRICE_CHANGE` | Chủ quán đổi giá món / biến thể (BR-27) | ✅ |
+| `RESTAURANT_PROFILE_CHANGE` | Quán đã duyệt đổi tên/địa chỉ (BR-14) | ⬜ |
+| `USER_BLOCK` / `USER_UNBLOCK` | Admin khóa user | ✅ |
+| `TOPUP_CONFIRM` / `TOPUP_REJECT` | Admin xác nhận / từ chối lệnh nạp ví | ✅ |
+| `PAYOUT_PAID` / `PAYOUT_REJECT` | Admin đã chuyển / từ chối yêu cầu rút | ✅ |
+| `WALLET_ADJUST` | Admin điều chỉnh ví quán (kèm lý do) | ✅ |
+| `REFUND_DONE` | Admin đã hoàn tiền cho khách | ✅ |
+| `PAYMENT_REFUND` / `PAYMENT_IGNORE` | Admin xử lý giao dịch SePay không khớp | ✅ |
+| `ORDER_CANCEL` | Hủy đơn | ⬜ |
+
+---
+
+### 3.11 Ví đối soát: `wallets`, `walletentries`, `topups`, `payouts` ✅ (API-11, 11/10/2026)
+
+Thư mục `modules/wallet/`. Sổ cái kép: mỗi bút toán ≥ 2 dòng, tổng = 0; chỉ đổi số dư qua `wallet.service.postJournal`
+(trong transaction cùng thao tác gốc). Bảng bút toán: docs/API.md mục 2.10.
+
+**`wallets`** — `{ key (unique: 'PLATFORM' │ 'PAYOUT_HOLD' │ 'EXTERNAL' │ 'restaurant:<id>'), type: RESTAURANT│PLATFORM│PAYOUT_HOLD│EXTERNAL│ESCROW, restaurant?, balance (Int VND), negativeSince (Date│null) }`.
+Tạo lười (upsert) ở bút toán đầu tiên. `negativeSince` đặt khi ví quán vừa âm, xóa khi về `>= 0` — dùng tính hạn 3 ngày.
+Index `{ type: 1, balance: 1 }`.
+
+**`walletentries`** (BR-53, chỉ ghi thêm — `pre` hook chặn update / delete như `auditlogs`) —
+`{ journal, ref, wallet, walletType, restaurant?, kind: ORDER_SETTLE│TOPUP│PAYOUT_REQUEST│PAYOUT_PAID│PAYOUT_REJECT│ADJUSTMENT, amount (±Int), balanceAfter, order?, topup?, payout?, note, actor?, createdAt }`.
+Index unique `{ ref: 1, wallet: 1 }` (chống ghi trùng: `ORDER_SETTLE:<orderId>`, `TOPUP:<id>`...), `{ wallet: 1, createdAt: -1 }`, `{ restaurant: 1, createdAt: -1 }`.
+
+**`topups`** — `{ code (unique, NAP{yyMMdd}{seq} — bộ đếm `counters` 'topup:<ngày>'), restaurant, requestedBy, amount, receivedAmount?, status: PENDING│CONFIRMED│REJECTED│CANCELLED, bankRef?, rejectReason?, processedBy?, processedAt? }`.
+
+**`payouts`** — `{ restaurant, requestedBy, amount, bankAccount (snapshot), status: REQUESTED│PAID│REJECTED, bankRef?, rejectReason?, processedBy?, processedAt? }`.
+Index unique một phần `{ restaurant: 1 }` khi `status = REQUESTED` (mỗi quán một yêu cầu chờ).
+
+**Thêm vào `restaurants`:** `walletLockedAt` (Date│null), `walletLockReason` (`OVER_LIMIT`│`OVERDUE`│null), `bankAccount { bankName, accountNumber, accountName }`.
+`canAcceptOrders` = APPROVED + bật nhận đơn + **`!walletLockedAt`** + trong giờ mở cửa.
+
+Dữ liệu cũ: ví bắt đầu từ lúc triển khai — đơn đã hoàn thành trước đó không được ghi sổ (cần thì admin dùng điều chỉnh tay).
+
+---
+
+### 3.12 Trả trước: `payments`, `refunds` + trường mới trên `orders` ✅ (W2, 11/10/2026)
+
+Thư mục `modules/payment/`.
+
+**Thêm vào `orders`:** `status` có thêm `PENDING_PAYMENT`; `paymentMethod: COD│BANK_TRANSFER`; `paymentStatus: UNPAID│PAID│REFUND_PENDING│REFUNDED`;
+`paymentCode` (unique sparse, `MAK{yyMMdd}{seq}`), `paymentDeadline`, `paidAt`, `paidAmount`; `cancelReason.code` thêm `PAYMENT_TIMEOUT`.
+`placedAt = null` khi chờ thanh toán (quán / báo cáo lọc theo `placedAt`), gán = `paidAt` khi tiền về. Index `{ status: 1, paymentDeadline: 1 }`.
+
+**`payments`** — giao dịch SePay thô: `{ provider: 'SEPAY', providerTxId (unique 'SEPAY:<id>'), gateway, accountNumber, transferType, amount, content, code, referenceCode, transactionDate,
+status: PROCESSING│MATCHED_ORDER│MATCHED_TOPUP│LATE│UNDERPAID│DUPLICATE│UNMATCHED│REFUNDING│IGNORED, order?, topup?, note, resolvedBy?, resolvedAt? }`.
+Trạng thái được đổi trong cùng transaction với việc xác nhận đơn / nạp ví; lỗi giữa chừng → xóa bản ghi `PROCESSING` để SePay gửi lại.
+
+**`refunds`** — `{ order?, payment?, customer?, amount, reason: ORDER_CANCELLED│LATE_PAYMENT│UNDERPAID│OVERPAID│DUPLICATE│UNMATCHED, status: PENDING│DONE, note, bankRef?, processedBy?, processedAt? }`.
+
+**Ví hệ thống mới:** `ESCROW` (tiền khách trả trước chờ đơn hoàn thành), `REFUND_HOLD` (tiền phải hoàn). `walletentries.kind` thêm `ORDER_PAYMENT`, `REFUND_PENDING`, `REFUND_PAID`; thêm ref `payment`, `refund`.
+
+---
+
+### 3.13 Bản đồ: vị trí trên `orders` + `routecaches` ✅ (20/10/2026)
+
+**Thêm vào `orders`:** `delivery.location` (GeoJSON Point — dữ liệu cá nhân, BR-85), `route { distanceKm, durationMinutes, source: ROUTING│ESTIMATE, provider, polyline }`, `estimatedDeliveryMinutes`.
+`restaurants.location` và `users.addresses.location` đã có từ trước (nay bắt buộc khi nộp hồ sơ quán / đặt giao tận nơi).
+
+**`routecaches`** — bộ nhớ đệm định tuyến: `{ key (unique: 'goong|<xe>|<lat,lng 4 số>|<lat,lng 4 số>'), distanceKm, durationMinutes, polyline, provider, createdAt }`, TTL 7 ngày.
+
+### 3.14 Tài xế MAK: `shippers`, `dispatchoffers` + trường mới trên `orders`, `restaurants`, ví ✅ (21/10/2026)
+
+**`shippers`** — 1 hồ sơ / tài khoản `SHIPPER`: `user (unique)`, `fullName`, `phone`, `idNumber`, `vehicleType (MOTORBIKE│EBIKE│BICYCLE)`, `licensePlate`,
+`documents [{ type: ID_CARD│DRIVER_LICENSE│VEHICLE_REGISTRATION, fileKey (private), originalName, mimeType, uploadedAt }]`,
+`status (DRAFT│SUBMITTED│APPROVED│REJECTED│BLOCKED)`, `rejectReason`, `submittedAt`, `approvedAt`, `approvedBy`, `bankAccount`,
+trạng thái làm việc (ghi đè, không lưu hành trình): `isOnline`, `location` (GeoJSON, **2dsphere**), `locationAt`, `activeOrder` (1 đơn / tài xế), `dispatchBlockedUntil`,
+thống kê: `completedCount`, `ratingSum`, `ratingCount`, `ratingAvg`.
+
+**`dispatchoffers`** — lời mời nhận đơn: `{ order, shipper, distanceKm, durationMinutes (tài xế → quán), attempt, status (OFFERED│ACCEPTED│DECLINED│EXPIRED│CANCELLED│WITHDRAWN), offeredAt, expiresAt, respondedAt, assignedBy? }`.
+Index unique một phần `{ order }` khi `status = OFFERED` → mỗi đơn chỉ 1 lời mời đang chờ.
+
+**Thêm vào `orders`:** `deliveryMode (SELF│PLATFORM)`, `shipperFee`, và trong `delivery`: `status (SEARCHING│NO_SHIPPER│ASSIGNED│ARRIVED_AT_STORE│PICKED_UP│DELIVERED│FAILED)`,
+`shipper`, `shipperUser`, `shipperSnapshot { fullName, phone, vehicleType, licensePlate }`, `searchStartedAt`, `attempts`, `assignedAt`, `arrivedAt`, `pickedUpAt`, `deliveredAt`, `failedAt`, `failReason`,
+`proof { kind: DELIVERED│FAILED, fileKey, mimeType, takenAt }`, `eta { minutes, target: STORE│CUSTOMER, updatedAt }`, `staleAlertAt`, `rating { stars, comment, at }`.
+`statusHistory.actorType` thêm `SHIPPER`; `cancelReason.code` thêm `DELIVERY_FAILED`. Index `{ delivery.status, status }`, `{ delivery.shipper, createdAt }`.
+
+**Thêm vào `restaurants`:** `deliveryMode (SELF│PLATFORM, mặc định SELF)`. **`users.role`** thêm `SHIPPER`.
+
+**Ví:** loại ví `SHIPPER` (key `shipper:<id>`, trường `shipper`); `walletentries.kind` thêm `SHIPPER_FEE`, `SHIPPER_COMPENSATION`; `payouts` có `restaurant` **hoặc** `shipper`
+(index cũ `restaurant_1` thay bằng `one_pending_per_restaurant` + `one_pending_per_shipper` — chạy `npm run migrate:003` trên DB đã có dữ liệu).
+
+**File private mới:** `uploads/private/shipper-documents/` (giấy tờ tài xế), `uploads/private/delivery-proofs/` (ảnh xác nhận / giao thất bại),
+`uploads/private/shipper-portraits/` (ảnh chân dung — `shippers.portrait { fileKey, mimeType, uploadedAt }`, thêm 22/10/2026).
+
+### 3.15 Đăng ký ca: `restaurantdayplans`, `shiftdays`, `shifts`, `shiftassignments`, `driverpenalties` ✅ (22/10/2026)
+
+**`restaurants`:** `deliveryMode` thêm `SCHEDULED`; `weeklySchedule [{ dayOfWeek, start, end, expectedOrders }]`.
+
+**`restaurantdayplans`** — lịch một ngày của quán: `{ restaurant, date 'YYYY-MM-DD', windows [{ start, end, expectedOrders }], source WEEKLY│ANSWER, answeredAt, lateCancels [{ start, end, at }] }`, unique `{ restaurant, date }`.
+
+**`shiftdays`** — mốc đã làm của một ngày (chạy lại an toàn): `{ area, date, askedAt, closedAt, reportedAt }`, unique `{ area, date }`.
+
+**`shifts`** — ca của khu vực: `{ area, date, start, end, startAt, endAt, kind FIXED│CUSTOM, label, restaurants [{ restaurant, name, address, expectedOrders }], expectedOrders, driversNeeded,
+status OPEN│LOCKED│RUNNING│DONE│CANCELLED, lockedAt, remindedAt, startedAt, check15At, check30At, endedAt }`, unique `{ area, date, start, end }`.
+
+**`shiftassignments`** — tài xế đăng ký ca: `{ shift, shipper, startAt, endAt (chép từ ca), status REGISTERED│ACTIVE│NO_SHOW│CANCELLED│LATE_CANCELLED│VOID, registeredAt, activeAt, cancelledAt }`;
+unique một phần `{ shift, shipper }` khi đang giữ (REGISTERED / ACTIVE).
+
+**`driverpenalties`** — lịch sử xử phạt: `{ shipper, kind VIOLATION│DECAY│WITHDRAW_LOCK│ADMIN_UNLOCK│ADMIN_UNBLOCK, reason NO_SHOW│LATE_CANCEL│WITHDRAWALS, fromLevel, toLevel, lockedUntil, shift, actor, note }`.
+
+**`shippers`** thêm: `penaltyLevel (0–4)`, `penaltyDecayAt`, `dispatchBlockReason (WITHDRAWALS│PENALTY)`, `consecutiveWithdrawals`. `auditlogs.actorRole` thêm `SHIPPER`; `notifications.type` thêm `SHIFT_*`, `PENALTY`.
+
+---
+
+## 4. Lưu file (không phải collection)
+
+Cấu hình: `config/storage.js` — thư mục gốc `UPLOAD_DIR` (mặc định `backend/uploads`, đã gitignore; test dùng thư mục tạm).
+
+| Thư mục | Nội dung | Truy cập | |
+|---|---|---|---|
+| `uploads/public/restaurants/` | Logo, ảnh bìa quán | public qua `/uploads/restaurants/<file>` | ✅ |
+| `uploads/public/menu-items/` | Ảnh món | public qua `/uploads/menu-items/<file>` | ✅ |
+| `uploads/private/documents/` | Giấy tờ pháp lý | **không public** — chỉ `GET /api/admin/restaurants/:id/documents/:type` | ✅ |
+
+Tên file là UUID ngẫu nhiên; thay ảnh/giấy tờ thì xóa file cũ. Khi deploy lên Render/Railway (ổ đĩa không bền) cần đổi sang Cloudinary/S3 ⏭️.
+
+---
+
+## 5. Collection sau MVP ⏭️
+
+| Collection | Mục đích | Ghi chú thiết kế |
+|---|---|---|
+| `storeStaff` | `{ restaurant, user, role: OWNER│MANAGER│CASHIER│ACCOUNTANT, status }` | Bỏ BR-10, middleware kiểm tra quyền theo quán |
+| `merchantDocuments` | Giấy tờ pháp lý, số tài khoản ngân hàng | Mã hóa field nhạy cảm (AES-256), URL ảnh có hạn |
+| `priceHistory` | `{ menuItem, oldPrice, newPrice, changedBy, at }` | MVP đang dùng audit log `MENU_PRICE_CHANGE` thay thế |
+| `wallets`, `walletentries`, `topups`, `payouts` | ✅ đã làm (mục 3.11) | |
+| `settlements` | Đối soát theo kỳ `{ restaurant, periodFrom, periodTo, gross, commission, net, status }` | job hằng ngày |
+| `promotions` | Combo, flash sale, chương trình nền tảng | |
+| `payments`, `refunds` | ✅ đã làm (mục 3.12) | |
+
+---
+
+## 6. Thao tác nguyên tử quan trọng
+
+### 6.1 Đổi trạng thái quán (admin) ✅
+
+Đã dùng trong `admin.restaurant.controller.js` (BR-71):
+
+```js
+const updated = await Restaurant.findOneAndUpdate(
+  { _id: current._id, status: current.status },   // chỉ cập nhật nếu chưa ai đổi
+  { $set: { status: to, ...set } },
+  { returnDocument: 'after', runValidators: true }
+);
+if (!updated) throw new AppError(409, 'INVALID_STATUS_TRANSITION', '...');
+```
+
+### 6.2 Trừ tồn kho khi đặt đơn (BR-34) ✅ (`reserveStock`; hoàn lại bằng `releaseStock`)
+
+```js
+// trong session.withTransaction(...)
+const r = await MenuItem.updateOne(
+  {
+    _id: itemId, restaurant: restaurantId, isDeleted: false, isAvailable: true,
+    $or: [
+      { dailyLimit: null },
+      { $expr: { $lte: [{ $add: ['$soldToday', qty] }, '$dailyLimit'] } }
+    ]
+  },
+  { $inc: { soldToday: qty, soldCount: qty } },
+  { session }
+);
+if (r.modifiedCount === 0) throw new AppError(409, 'ITEM_OUT_OF_STOCK', '...');
+```
+
+### 6.3 Dùng voucher (BR-42, 43) ✅ (`voucher.service.js` — `redeemVouchers` khi đặt, `releaseVouchers` khi hủy)
+
+```js
+await Voucher.updateOne(
+  { _id, isActive: true, startAt: { $lte: now }, endAt: { $gte: now },
+    $or: [{ usageLimit: null }, { $expr: { $lt: ['$usedCount', '$usageLimit'] } }] },
+  { $inc: { usedCount: 1 } },
+  { session }
+);
+```
+
+### 6.4 Chuyển trạng thái đơn không bị ghi đè (BR-35) ✅ (`transitionOrder` — dùng lại cho API-6)
+
+```js
+await Order.findOneAndUpdate(
+  { _id, restaurant: myRestaurantId, status: from },
+  { $set: { status: to, [`${to.toLowerCase()}At`]: now },
+    $push: { statusHistory: { from, to, actorType, actor, reason, at: now } } },
+  { returnDocument: 'after' }
+);
+```
+
+> Lưu ý Mongoose 9: dùng `returnDocument: 'after'` thay cho `new: true`.
+
+### 6.5 Job (node-cron) ✅ (`src/jobs/index.js`, thời gian chờ chỉnh bằng `ORDER_TIMEOUT_MINUTES`)
+
+| Job | Lịch | Việc |
+|---|---|---|
+| `orderTimeout` | mỗi phút | `PLACED` và `placedAt < now - 5'` → `CANCELLED` (actor SYSTEM, `cancelReason.code = TIMEOUT`), hoàn `soldToday` (BR-36, BR-37); hoàn `usedCount` voucher ⬜ |
+| `paymentTimeout` | mỗi phút | `PENDING_PAYMENT` và `paymentDeadline < now` → `CANCELLED` (`PAYMENT_TIMEOUT`), hoàn suất (W2) |
+| `walletLock` | phút 5 mỗi giờ | Ví quán âm quá `WALLET_CREDIT_LIMIT` hoặc âm từ trước `now − WALLET_GRACE_DAYS` → `walletLockedAt`; quán đang khóa có số dư `>= 0` → mở (API-11) |
+| `dailyStockReset` | 00:00 `Asia/Ho_Chi_Minh` | `MenuItem.updateMany({ soldToday: { $gt: 0 } }, { soldToday: 0 })` (BR-23) |
+
+---
+
+## 7. Migration & dữ liệu mẫu
+
+| # | Thay đổi | Cách làm | |
+|---|---|---|---|
+| M1 | `restaurants.status`: `PENDING` → `SUBMITTED`, thêm `DRAFT`, `REJECTED`; bổ sung `nameNoAccent` | `npm run migrate:001` — chạy lại nhiều lần an toàn, có `--dry-run` | ✅ đã chạy trên DB `MAKfood` 06/10 |
+| M2 | Unique index `restaurants.owner` | Cùng script M1: kiểm tra chủ có nhiều quán (in danh sách và dừng nếu có), rồi `syncIndexes()` | ✅ script · ⬜ chưa chạy |
+| M3 | Thêm field mới cho `users`, `restaurants` | Đều có default → không cần migrate | ✅ |
+| M4 | Bật replica set cho MongoDB local | Cập nhật `backend/.env.example` + README: `MONGODB_URI=mongodb://localhost:27017/mak_food?replicaSet=rs0` | ⬜ (cần trước khi làm đặt đơn) |
+| M5 | FE `OrderStatus` (`PENDING/CONFIRMED/DONE`) → enum mới | Đã sửa `frontend/src/types.ts`; đơn tạm trong localStorage bị bỏ | ✅ |
+| M6 | Backfill `restaurants.nameNoAccent` cho quán tạo trước Bước 6b | Thêm vào script migration: đọc từng quán và `save()` (hoặc `updateOne` với giá trị bỏ dấu) | ⬜ |
+
+**Dữ liệu demo:** `npm run seed:demo` (`utils/seedDemo.js`) ✅ — 3 quán `quan-a/b/c` đã duyệt, 6 danh mục, 16 món chép từ `frontend/src/data/menu.ts` (`stock` → `dailyLimit`, `popularity` → `soldCount`; "Trà sữa trân châu" có size + topping), 4 tài khoản demo. Chạy lại nhiều lần được (menu demo tạo lại từ đầu); từ chối chạy khi `NODE_ENV=production`.
+
+---
+
+## 8. Lộ trình thực hiện phần Database
+
+Mỗi bước: viết model → viết seed/test → chạy `syncIndexes` → kiểm tra trên MongoDB Compass.
+
+| Bước | Thời gian (Gantt) | Việc | Kiểm chứng | |
+|---|---|---|---|---|
+| **DB-0** | 06/10 – 08/10 | Chốt ERD mục 2, replica set (test ✅, local ⬜), validate tiền nguyên | Test transaction chạy được | 🟡 |
+| **DB-1** | 13/10 – 14/10 | `users`: `addresses`, `avatarUrl`, `passwordChangedAt` | Test thêm/sửa địa chỉ | ✅ 06/10 |
+| **DB-2** | 14/10 – 15/10 | `restaurants`: migration M1, M2; field mục 3.2; index 2dsphere + text; `nameNoAccent` | Script migration chạy 2 lần không lỗi | ✅ 06/10 (script chưa chạy trên DB thật) |
+| **DB-3** | 15/10 – 17/10 | `menucategories`, `menuitems` (variants, optionGroups, validate min/max); seed demo | Seed 3 quán × 16 món từ `menu.ts` | ✅ 06/10 |
+| **DB-4** | 17/10 – 20/10 | `orders`, `idempotencykeys`, `vouchers` + hàm 6.2, 6.3, 6.4 | Test: 5 request đặt món cuối cùng → chỉ 1 thành công | ⬜ **← tiếp theo** |
+| **DB-5** | 20/10 – 23/10 | Job `orderTimeout`, `dailyStockReset` | Đơn PLACED 5' tự hủy, tồn kho hoàn lại | ✅ 06/10 |
+| **DB-6** | 23/10 – 27/10 | `reviews`, `notifications`, `auditlogs`; cập nhật `ratingAvg`, `ratingScore` | 1 đánh giá / khách / quán (unique) | ✅ 08/10 |
+| **DB-7** | 27/10 – 29/10 | Aggregation báo cáo: doanh thu theo ngày, top món, tỷ lệ hủy | So khớp số liệu với seed thủ công | ⬜ |
+| **DB-8** | 29/10 – 02/11 | Kiểm tra index bằng `explain()` cho 5 truy vấn chính, backup Atlas, migration M6 | Mọi truy vấn chính dùng IXSCAN | ⬜ |
+| DB-9 ⏭️ | sau MVP | `storeStaff`, `merchantDocuments`, ví/ledger, settlements | — | ⏭️ |

@@ -1,0 +1,309 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { getErrorMessage } from '../api/client';
+import { ordersApi } from '../api/orders';
+import AppHeader from '../components/AppHeader';
+import DeliveryTracker from '../components/DeliveryTracker';
+import { useSocketEvent } from '../context/SocketContext';
+import { useMarkSeen } from '../context/BadgeContext';
+import { groupOf } from '../utils/badges';
+import { useToast } from '../context/ToastContext';
+import type { Order, OrderStatus } from '../types';
+import { formatDateTime, formatPrice } from '../utils/format';
+import { PAYMENT_STATUS_LABEL } from '../utils/labels';
+
+const PAGE_SIZE = 10;
+/** API giới hạn limit tối đa 100 */
+const MAX_LIMIT = 100;
+
+// Các bước của đơn (BR-35, rút gọn 19/10/2026)
+// Giao tận nơi: Chờ quán nhận → Đang làm → Đang giao → Đã giao · Tự lấy: Chờ quán nhận → Đang làm → Mời bạn đến lấy → Đã lấy
+const flowOf = (o: Order): { label: string; statuses: OrderStatus[] }[] => {
+  const pickup = o.fulfillmentType === 'PICKUP';
+  return [
+    ...(o.paymentMethod === 'BANK_TRANSFER' ? [{ label: 'Chờ thanh toán', statuses: ['PENDING_PAYMENT'] as OrderStatus[] }] : []),
+    { label: 'Chờ quán nhận', statuses: ['PLACED'] },
+    // READY của đơn giao tận nơi (đơn cũ) vẫn tính là "đang làm"
+    { label: 'Đang làm', statuses: pickup ? ['ACCEPTED', 'PREPARING'] : ['ACCEPTED', 'PREPARING', 'READY'] },
+    pickup
+      ? { label: 'Mời bạn đến lấy', statuses: ['READY'] as OrderStatus[] }
+      : { label: 'Đang giao', statuses: ['DELIVERING'] as OrderStatus[] },
+    { label: pickup ? 'Đã lấy' : 'Đã giao', statuses: ['COMPLETED'] },
+  ];
+};
+
+const ENDED: Partial<Record<OrderStatus, string>> = {
+  REJECTED: 'Quán đã từ chối đơn',
+  CANCELLED: 'Đơn đã bị hủy',
+};
+
+const STATUS_NOTICE: Record<string, string> = {
+  PLACED: 'đã nhận thanh toán, chờ quán nhận',
+  ACCEPTED: 'quán đã nhận đơn',
+  PREPARING: 'quán đã nhận đơn và đang làm',
+  READY: 'món đã xong, mời bạn đến lấy',
+  DELIVERING: 'đang giao đến bạn',
+  COMPLETED: 'đã hoàn thành. Chúc ngon miệng!',
+  REJECTED: 'quán đã từ chối đơn',
+  CANCELLED: 'đơn đã bị hủy',
+};
+
+const CANCEL_REASON: Record<string, string> = {
+  CUSTOMER_CHANGED_MIND: 'Bạn đã hủy đơn',
+  TIMEOUT: 'Quán không phản hồi kịp',
+  PAYMENT_TIMEOUT: 'Quá hạn thanh toán',
+  OUT_OF_STOCK: 'Quán hết món',
+  OVERLOADED: 'Quán đang quá tải',
+  CLOSED: 'Quán đã đóng cửa',
+  OTHER: 'Lý do khác',
+};
+
+// Lọc theo trạng thái để xem lịch sử dễ hơn (22/10/2026). Mục đang chọn nằm trên URL: /orders?filter=cancelled
+const FILTERS: { key: string; label: string; statuses?: OrderStatus[] }[] = [
+  { key: 'all', label: 'Tất cả' },
+  { key: 'active', label: 'Đang xử lý', statuses: ['PENDING_PAYMENT', 'PLACED', 'ACCEPTED', 'PREPARING', 'READY', 'DELIVERING'] },
+  { key: 'completed', label: 'Hoàn thành', statuses: ['COMPLETED'] },
+  { key: 'cancelled', label: 'Đã hủy', statuses: ['CANCELLED'] },
+  { key: 'rejected', label: 'Bị từ chối', statuses: ['REJECTED'] },
+];
+
+export default function OrdersPage() {
+  const notify = useToast();
+  const placed = useLocation().state as { placedCode?: string; placedId?: string } | null;
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  const filter = FILTERS.find(f => f.key === params.get('filter')) ?? FILTERS[0];
+  const matches = (o: Order) => !filter.statuses || filter.statuses.includes(o.status);
+  const chooseFilter = (key: string) => {
+    const next = new URLSearchParams(params);
+    if (key === 'all') next.delete('filter'); else next.set('filter', key);
+    setParams(next, { replace: true });
+    setPage(1);
+  };
+  // Đang xem đơn -> thông báo đơn coi như đã xem (số đỏ ở menu tài khoản mất)
+  useMarkSeen(groupOf('CUSTOMER', 'orders')?.types);
+
+  /** Tải lại từ trang 1 tới trang hiện tại (giữ danh sách đang xem) */
+  const load = useCallback(async (upTo: number) => {
+    setLoading(true);
+    try {
+      const res = await ordersApi.list({ page: 1, limit: Math.min(MAX_LIMIT, PAGE_SIZE * upTo), status: filter.statuses });
+      setOrders(res.items);
+      setTotal(res.total);
+      setError('');
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter.key]);
+
+  useEffect(() => { load(page); }, [load, page]);
+
+  // Realtime: quán nhận / làm xong / giao... -> cập nhật đúng đơn đó, không cần F5
+  useSocketEvent('order:status_changed', async e => {
+    if (e.actorType !== 'CUSTOMER') notify(`Đơn ${e.code}: ${STATUS_NOTICE[e.to] ?? e.to}`);
+    try {
+      const fresh = await ordersApi.get(e.orderId);
+      // Đơn đổi trạng thái không còn thuộc mục đang lọc -> bỏ khỏi danh sách; mới thuộc mục -> thêm lên đầu
+      setOrders(list => {
+        const rest = list.filter(o => o.id !== fresh.id);
+        if (!matches(fresh)) return rest;
+        return list.some(o => o.id === fresh.id) ? list.map(o => (o.id === fresh.id ? fresh : o)) : [fresh, ...rest];
+      });
+    } catch {
+      load(page);
+    }
+  });
+  // Tài xế MAK: có tài xế nhận, tới quán, giao thất bại... -> tải lại đúng đơn đó
+  useSocketEvent('delivery:changed', async e => {
+    if (e.deliveryStatus === 'ASSIGNED' && e.shipper) notify(`Đơn ${e.code}: tài xế ${e.shipper.fullName} đã nhận đơn`);
+    try {
+      const fresh = await ordersApi.get(e.orderId);
+      setOrders(list => list.map(o => (o.id === fresh.id ? fresh : o)));
+    } catch {
+      /* đơn không còn trong danh sách đang xem */
+    }
+  });
+  useSocketEvent('reconnected', () => load(page));
+  const replace = (fresh: Order) => setOrders(list => list.map(o => (o.id === fresh.id ? fresh : o)));
+
+  const cancel = async (o: Order) => {
+    if (!window.confirm(`Hủy đơn ${o.code}?${o.paymentStatus === 'PAID' ? ' MAK sẽ hoàn tiền chuyển khoản cho bạn.' : ''}`)) return;
+    setBusyId(o.id);
+    try {
+      const updated = await ordersApi.cancel(o.id);
+      setOrders(list => list.map(x => (x.id === updated.id ? updated : x)));
+      notify('Đã hủy đơn');
+    } catch (err) {
+      notify(getErrorMessage(err));
+      load(page);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="app">
+      <AppHeader />
+      <main className="container page-body narrow">
+        <div className="owner-title-row">
+          <h1 className="page-title">Đơn của tôi</h1>
+          {orders.length > 0 && (
+            <button className="btn-outline" onClick={() => load(page)} disabled={loading}>
+              {loading ? 'Đang tải...' : '↻ Tải lại'}
+            </button>
+          )}
+        </div>
+
+        {placed?.placedCode && (
+          <div className="success-banner" role="status">
+            <div>
+              <b>Đặt món thành công!</b>
+              <small>Quán sẽ sớm xác nhận đơn {placed.placedCode} của bạn. Bạn có thể hủy khi quán chưa nhận đơn.</small>
+            </div>
+          </div>
+        )}
+
+        <div className="cat-tabs order-tabs order-filter" role="tablist" aria-label="Lọc theo trạng thái đơn">
+          {FILTERS.map(f => (
+            <button key={f.key} role="tab" aria-selected={filter.key === f.key} className={filter.key === f.key ? 'active' : ''} onClick={() => chooseFilter(f.key)}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {error ? (
+          <div className="empty-state">
+            <h2>Không tải được đơn hàng</h2>
+            <p>{error}</p>
+            <button className="btn-soft" onClick={() => load(page)}>Thử lại</button>
+          </div>
+        ) : loading && orders.length === 0 ? (
+          <div className="page-loading">Đang tải...</div>
+        ) : orders.length === 0 ? (
+          filter.key === 'all' ? (
+            <div className="empty-state">
+              <h2>Bạn chưa có đơn nào</h2>
+              <p>Món ngon đang chờ bạn ở thực đơn hôm nay.</p>
+              <Link to="/menu" className="btn-primary">Đặt món ngay</Link>
+            </div>
+          ) : (
+            <div className="empty-state">
+              <h2>Không có đơn nào ở mục "{filter.label}"</h2>
+              <button className="btn-soft" onClick={() => chooseFilter('all')}>Xem tất cả đơn</button>
+            </div>
+          )
+        ) : (
+          <>
+            <ul className="order-list">
+              {orders.map(o => {
+                const flow = flowOf(o);
+                const step = flow.findIndex(f => f.statuses.includes(o.status));
+                return (
+                  <li key={o.id} className={o.id === placed?.placedId ? 'panel order highlight' : 'panel order'}>
+                    <div className="order-top">
+                      <div>
+                        <b>{o.code}</b>
+                        <small>
+                          {o.restaurantSnapshot.slug
+                            ? <Link to={`/restaurants/${o.restaurantSnapshot.slug}`} className="link-btn">{o.restaurantSnapshot.name}</Link>
+                            : o.restaurantSnapshot.name}
+                          {' · '}{formatDateTime(o.placedAt ?? o.createdAt)} · {o.fulfillmentType === 'PICKUP' ? 'Tự đến lấy' : 'Giao tận nơi'}
+                        </small>
+                      </div>
+                      <div className="order-price">
+                        <strong>{formatPrice(o.total)}</strong>
+                        <small className={`pay-badge s-${o.paymentStatus}`}>
+                          {o.paymentMethod === 'BANK_TRANSFER' ? `Chuyển khoản · ${PAYMENT_STATUS_LABEL[o.paymentStatus] ?? ''}` : 'Tiền mặt'}
+                        </small>
+                      </div>
+                    </div>
+
+                    {ENDED[o.status] ? (
+                      <p className="order-cancelled">
+                        {ENDED[o.status]}
+                        {o.cancelReason?.code && o.cancelReason.code !== 'CUSTOMER_CHANGED_MIND' && ` — ${CANCEL_REASON[o.cancelReason.code] ?? o.cancelReason.code}`}
+                        {o.cancelReason?.note && `: ${o.cancelReason.note}`}
+                      </p>
+                    ) : (
+                      <ol className="track" aria-label="Trạng thái đơn" style={{ gridTemplateColumns: `repeat(${flow.length}, 1fr)` }}>
+                        {flow.map((f, i) => (
+                          <li key={f.label} className={i < step ? 'done' : i === step ? 'current' : ''}>
+                            <span className="dot" aria-hidden />
+                            {f.label}
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+
+                    {o.estimatedReadyAt && ['ACCEPTED', 'PREPARING'].includes(o.status) && (
+                      <p className="order-eta">
+                        Dự kiến món xong lúc {new Date(o.estimatedReadyAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    )}
+
+                    <DeliveryTracker order={o} viewer="customer" onChanged={replace} />
+
+                    <ul className="order-items">
+                      {o.items.map(i => {
+                        const extras = [i.variant && `Size ${i.variant.name}`, ...i.options.map(op => op.name)].filter(Boolean).join(', ');
+                        return (
+                          <li key={i.id}>
+                            <span><b>{i.qty}×</b> {i.name}{extras && <small> · {extras}</small>}</span>
+                            <span>{formatPrice(i.lineTotal)}</span>
+                          </li>
+                        );
+                      })}
+                      {o.fulfillmentType === 'DELIVERY' && (
+                        <li className="order-fee"><span>Phí giao hàng</span><span>Miễn phí</span></li>
+                      )}
+                      {o.vouchers?.map(v => (
+                        <li key={v.code} className="order-fee discount-line">
+                          <span>{v.fundedBy === 'PLATFORM' ? 'Voucher MAK' : 'Voucher quán'} <b className="mono">{v.code}</b></span>
+                          <span>−{formatPrice(v.discount)}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="order-foot">
+                      <p className="order-address">
+                        {o.delivery
+                          ? <>Giao đến: {o.delivery.receiverName} · {o.delivery.phone} · {o.delivery.addressLine}{o.delivery.note && <> · <i>{o.delivery.note}</i></>}</>
+                          : 'Tự đến lấy tại quán'}
+                      </p>
+                      {o.status === 'COMPLETED' && o.restaurantSnapshot.slug && (
+                        <Link to={`/restaurants/${o.restaurantSnapshot.slug}#reviews`} className="btn-soft">★ Đánh giá quán</Link>
+                      )}
+                      {o.status === 'PENDING_PAYMENT' && (
+                        <Link to={`/orders/${o.id}/pay`} className="btn-primary">Thanh toán</Link>
+                      )}
+                      {(o.status === 'PLACED' || o.status === 'PENDING_PAYMENT') && (
+                        <button className="btn-outline danger-outline" onClick={() => cancel(o)} disabled={busyId === o.id}>
+                          {busyId === o.id ? 'Đang hủy...' : 'Hủy đơn'}
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            {orders.length < total && PAGE_SIZE * page < MAX_LIMIT && (
+              <div className="load-more">
+                <button className="btn-soft" onClick={() => setPage(p => p + 1)} disabled={loading}>
+                  {loading ? 'Đang tải...' : 'Xem thêm đơn cũ'}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
