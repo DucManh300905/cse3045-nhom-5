@@ -6,6 +6,8 @@
 //   npm run loadtest:orders -- --rpm=100 --minutes=3         # 3 phút
 //   npm run loadtest:orders -- --flow=pickup                 # đơn tự đến lấy
 //   npm run loadtest:orders -- --flow=prepaid                # đơn chuyển khoản (giả lập webhook SePay — cần SEPAY_WEBHOOK_API_KEY)
+//   npm run loadtest:orders -- --items=10 --shops=3          # 3 quán, mỗi quán 10 món, khách chọn món ngẫu nhiên (sát thực tế)
+//   npm run loadtest:orders -- --items=1 --shops=1           # trường hợp xấu nhất: mọi đơn tranh cùng 1 món
 //   npm run loadtest:orders -- --out=loadtest-report.json    # lưu thêm báo cáo JSON
 //   npm run loadtest:orders -- --cleanup                     # xóa dữ liệu test (đơn, thông báo, tài khoản, quán test)
 //
@@ -13,8 +15,8 @@
 // Nhịp: cứ 60000/rpm ms gửi đúng 1 request; ưu tiên bước kế tiếp của đơn đang chạy, rảnh mới mở đơn mới.
 // Hết thời gian thì không mở đơn mới, chỉ chạy nốt các đơn dở.
 //
-// Dữ liệu test: quán "Quán Load Test" (slug loadtest-shop, hoa hồng 0% để ví không âm / không bị khóa),
-// tài khoản loadtest.owner@mak.local + loadtest.customer<N>@mak.local với MẬT KHẨU NGẪU NHIÊN mỗi lần chạy.
+// Dữ liệu test: các quán "Quán Load Test <N>" (slug loadtest-shop, loadtest-shop-2..., hoa hồng 0% để ví không âm / không bị khóa),
+// tài khoản loadtest.owner[N]@mak.local + loadtest.customer<N>@mak.local với MẬT KHẨU NGẪU NHIÊN mỗi lần chạy.
 // An toàn: chỉ chạy với API trên máy (localhost); muốn chạy vào máy khác phải thêm --yes.
 // Biến môi trường: LOADTEST_API_URL (mặc định http://localhost:<PORT>/api), MONGODB_URI (để tạo dữ liệu test).
 require('dotenv').config({ quiet: true });
@@ -43,9 +45,13 @@ const RPM = Math.max(1, Number(arg('rpm', 100)));
 const MINUTES = Math.max(0.1, Number(arg('minutes', 1)));
 const FLOW = String(arg('flow', 'delivery'));
 const CUSTOMERS = Math.max(1, Math.min(50, Number(arg('customers', 5))));
+// Mặc định 5 món, 1 quán: đơn chia ra nhiều món như thực tế (1 món = mọi đơn tranh cùng một bản ghi suất)
+const ITEMS = Math.max(1, Math.min(50, Number(arg('items', 5))));
+const SHOPS = Math.max(1, Math.min(10, Number(arg('shops', 1))));
 const OUT = arg('out', null);
 const SLUG = 'loadtest-shop';
-const OWNER_EMAIL = 'loadtest.owner@mak.local';
+const ownerEmail = (i) => (i === 1 ? 'loadtest.owner@mak.local' : `loadtest.owner${i}@mak.local`);
+const OWNER_EMAIL_RE = /^loadtest\.owner\d*@mak\.local$/;
 const customerEmail = (i) => `loadtest.customer${i}@mak.local`;
 const HOA_LAC = { lat: 21.0136, lng: 105.5254 };
 // Nơi nhận cố định (~1 km) -> quãng đường được lưu đệm sau lần đầu, không tốn lượt Goong
@@ -89,43 +95,52 @@ const prepare = async () => {
             { upsert: true, returnDocument: 'after' }
         );
 
-    const owner = await upsertUser(OWNER_EMAIL, 'Chủ quán test tải', 'RESTAURANT_OWNER');
-    const restaurant = await Restaurant.findOneAndUpdate(
-        { owner: owner._id },
-        {
-            $set: {
-                status: 'APPROVED',
-                isAcceptingOrders: true,
-                deliveryMode: 'SELF',
-                // Hoa hồng 0%: đơn tiền mặt không làm ví âm -> quán không bị khóa giữa chừng
-                commissionRate: 0,
-                minOrderAmount: 0,
-                deliveryRadiusKm: 10,
-                walletLockedAt: null,
-                walletLockReason: null,
-                location: { type: 'Point', coordinates: [HOA_LAC.lng, HOA_LAC.lat] },
-                openingHours: Array.from({ length: 7 }, (_, d) => ({ dayOfWeek: d, open: '00:00', close: '23:59' }))
+    const shops = [];
+    for (let n = 1; n <= SHOPS; n += 1) {
+        const owner = await upsertUser(ownerEmail(n), `Chủ quán test tải ${n}`, 'RESTAURANT_OWNER');
+        const restaurant = await Restaurant.findOneAndUpdate(
+            { owner: owner._id },
+            {
+                $set: {
+                    status: 'APPROVED',
+                    isAcceptingOrders: true,
+                    deliveryMode: 'SELF',
+                    // Hoa hồng 0%: đơn tiền mặt không làm ví âm -> quán không bị khóa giữa chừng
+                    commissionRate: 0,
+                    minOrderAmount: 0,
+                    deliveryRadiusKm: 10,
+                    walletLockedAt: null,
+                    walletLockReason: null,
+                    location: { type: 'Point', coordinates: [HOA_LAC.lng, HOA_LAC.lat] },
+                    openingHours: Array.from({ length: 7 }, (_, d) => ({ dayOfWeek: d, open: '00:00', close: '23:59' }))
+                },
+                $setOnInsert: { name: `Quán Load Test ${n}`, slug: n === 1 ? SLUG : `${SLUG}-${n}`, address: 'Hòa Lạc (test tải)', phone: '0900000001' }
             },
-            $setOnInsert: { name: 'Quán Load Test', slug: SLUG, address: 'Hòa Lạc (test tải)', phone: '0900000001' }
-        },
-        { upsert: true, returnDocument: 'after' }
-    );
-    const category =
-        (await MenuCategory.findOne({ restaurant: restaurant._id })) ?? (await MenuCategory.create({ restaurant: restaurant._id, name: 'Món test' }));
-    const item = await MenuItem.findOneAndUpdate(
-        { restaurant: restaurant._id, name: 'Cơm test tải' },
-        {
-            $set: { isAvailable: true, isDeleted: false, dailyLimit: null, basePrice: 30000 },
-            $setOnInsert: { category: category._id }
-        },
-        { upsert: true, returnDocument: 'after' }
-    );
+            { upsert: true, returnDocument: 'after' }
+        );
+        const category =
+            (await MenuCategory.findOne({ restaurant: restaurant._id })) ?? (await MenuCategory.create({ restaurant: restaurant._id, name: 'Món test' }));
+        const items = [];
+        for (let k = 1; k <= ITEMS; k += 1) {
+            items.push(
+                await MenuItem.findOneAndUpdate(
+                    { restaurant: restaurant._id, name: `Cơm test tải ${k}` },
+                    {
+                        $set: { isAvailable: true, isDeleted: false, dailyLimit: null, basePrice: 30000 },
+                        $setOnInsert: { category: category._id }
+                    },
+                    { upsert: true, returnDocument: 'after' }
+                )
+            );
+        }
+        shops.push({ owner, restaurant, items });
+    }
 
     const customers = [];
     for (let i = 1; i <= CUSTOMERS; i += 1) {
         customers.push(await upsertUser(customerEmail(i), `Khách test tải ${i}`, 'CUSTOMER'));
     }
-    return { password, owner, restaurant, item, customers };
+    return { password, shops, customers };
 };
 
 const login = async (email, password) => {
@@ -135,19 +150,17 @@ const login = async (email, password) => {
 };
 
 const cleanup = async () => {
-    const owner = await User.findOne({ email: OWNER_EMAIL }).select('_id');
-    const restaurant = owner && (await Restaurant.findOne({ owner: owner._id }).select('_id'));
+    const owners = await User.find({ email: { $regex: OWNER_EMAIL_RE } }).distinct('_id');
+    const restaurants = await Restaurant.find({ owner: { $in: owners } }).distinct('_id');
     const users = await User.find({ email: { $regex: /^loadtest\..*@mak\.local$/ } }).distinct('_id');
-    const orders = restaurant ? await Order.deleteMany({ restaurant: restaurant._id }) : { deletedCount: 0 };
+    const orders = await Order.deleteMany({ restaurant: { $in: restaurants } });
     const notes = await Notification.deleteMany({ user: { $in: users } });
     await IdempotencyKey.deleteMany({ user: { $in: users } });
-    if (restaurant) {
-        await MenuItem.deleteMany({ restaurant: restaurant._id });
-        await MenuCategory.deleteMany({ restaurant: restaurant._id });
-        await Restaurant.deleteOne({ _id: restaurant._id });
-    }
+    await MenuItem.deleteMany({ restaurant: { $in: restaurants } });
+    await MenuCategory.deleteMany({ restaurant: { $in: restaurants } });
+    await Restaurant.deleteMany({ _id: { $in: restaurants } });
     const removedUsers = await User.deleteMany({ _id: { $in: users } });
-    console.log(`Đã xóa: ${orders.deletedCount} đơn, ${notes.deletedCount} thông báo, ${removedUsers.deletedCount} tài khoản, quán test.`);
+    console.log(`Đã xóa: ${orders.deletedCount} đơn, ${notes.deletedCount} thông báo, ${removedUsers.deletedCount} tài khoản, ${restaurants.length} quán test.`);
     console.log('Giữ lại sổ cái ví (chỉ ghi thêm, không xóa) — các bút toán 0đ của quán test vốn không được ghi.');
 };
 
@@ -176,19 +189,21 @@ const fmt = (ms) => `${Math.round(ms)}`.padStart(6);
 // ---------- Vòng đời đơn ----------
 const buildFlow = (ctx, index) => {
     const customer = ctx.customerTokens[index % ctx.customerTokens.length];
+    const shop = ctx.shops[index % ctx.shops.length];
+    const item = shop.items[Math.floor(Math.random() * shop.items.length)];
     const fulfillmentType = FLOW === 'pickup' ? 'PICKUP' : 'DELIVERY';
     const paymentMethod = FLOW === 'prepaid' ? 'BANK_TRANSFER' : 'COD';
-    const items = [{ menuItemId: String(ctx.item._id), qty: 1 }];
+    const items = [{ menuItemId: String(item._id), qty: 1 }];
     const delivery = fulfillmentType === 'DELIVERY' ? DROPOFF : undefined;
     const state = {};
 
     const list = [
-        ['1. Xem trước', () => call('POST', '/orders/preview', { token: customer, body: { restaurantId: String(ctx.restaurant._id), items, fulfillmentType, paymentMethod, delivery } })],
+        ['1. Xem trước', () => call('POST', '/orders/preview', { token: customer, body: { restaurantId: String(shop.restaurant._id), items, fulfillmentType, paymentMethod, delivery } })],
         ['2. Đặt đơn', async () => {
             const res = await call('POST', '/orders', {
                 token: customer,
                 headers: { 'Idempotency-Key': `lt-${crypto.randomUUID()}` },
-                body: { restaurantId: String(ctx.restaurant._id), items, fulfillmentType, paymentMethod, delivery }
+                body: { restaurantId: String(shop.restaurant._id), items, fulfillmentType, paymentMethod, delivery }
             });
             state.order = res.data?.data;
             return res;
@@ -212,11 +227,11 @@ const buildFlow = (ctx, index) => {
     }
     const n = list.length;
     list.push(
-        [`${n + 1}. Quán nhận đơn`, () => call('POST', `/merchant/orders/${state.order.id}/accept`, { token: ctx.ownerToken })],
+        [`${n + 1}. Quán nhận đơn`, () => call('POST', `/merchant/orders/${state.order.id}/accept`, { token: shop.ownerToken })],
         fulfillmentType === 'PICKUP'
-            ? [`${n + 2}. Món đã xong`, () => call('POST', `/merchant/orders/${state.order.id}/status`, { token: ctx.ownerToken, body: { to: 'READY' } })]
-            : [`${n + 2}. Đi giao`, () => call('POST', `/merchant/orders/${state.order.id}/status`, { token: ctx.ownerToken, body: { to: 'DELIVERING' } })],
-        [`${n + 3}. ${fulfillmentType === 'PICKUP' ? 'Khách đã lấy' : 'Đã giao'}`, () => call('POST', `/merchant/orders/${state.order.id}/status`, { token: ctx.ownerToken, body: { to: 'COMPLETED' } })],
+            ? [`${n + 2}. Món đã xong`, () => call('POST', `/merchant/orders/${state.order.id}/status`, { token: shop.ownerToken, body: { to: 'READY' } })]
+            : [`${n + 2}. Đi giao`, () => call('POST', `/merchant/orders/${state.order.id}/status`, { token: shop.ownerToken, body: { to: 'DELIVERING' } })],
+        [`${n + 3}. ${fulfillmentType === 'PICKUP' ? 'Khách đã lấy' : 'Đã giao'}`, () => call('POST', `/merchant/orders/${state.order.id}/status`, { token: shop.ownerToken, body: { to: 'COMPLETED' } })],
         [`${n + 4}. Khách xem lại đơn`, async () => {
             const res = await call('GET', `/orders/${state.order.id}`, { token: customer });
             // Cuối vòng đời đơn phải là COMPLETED
@@ -231,7 +246,7 @@ const buildFlow = (ctx, index) => {
 
 // ---------- Chạy ----------
 const run = async () => {
-    console.log(`Test tải vòng đời đơn · ${API} · ${RPM} request/phút · ${MINUTES} phút · luồng: ${FLOW} · ${CUSTOMERS} khách`);
+    console.log(`Test tải vòng đời đơn · ${API} · ${RPM} request/phút · ${MINUTES} phút · luồng: ${FLOW} · ${CUSTOMERS} khách · ${SHOPS} quán × ${ITEMS} món`);
     if (!isLocal && !arg('yes', false)) {
         console.error('API không phải localhost. Test tải sẽ tạo nhiều đơn thật — chạy lại kèm --yes nếu chắc chắn (KHÔNG khuyến nghị trên VPS đang demo).');
         process.exitCode = 1;
@@ -253,11 +268,10 @@ const run = async () => {
     await mongoose.connect(process.env.MONGODB_URI);
     const data = await prepare();
     const ctx = {
-        ...data,
-        ownerToken: await login(OWNER_EMAIL, data.password),
+        shops: await Promise.all(data.shops.map(async (sh) => ({ ...sh, ownerToken: await login(sh.owner.email, data.password) }))),
         customerTokens: await Promise.all(data.customers.map((c) => login(c.email, data.password)))
     };
-    console.log('Đã chuẩn bị quán test + tài khoản. Bắt đầu...\n');
+    console.log(`Đã chuẩn bị ${SHOPS} quán test × ${ITEMS} món + tài khoản. Bắt đầu...\n`);
 
     const interval = 60000 / RPM;
     const startedAt = performance.now();
@@ -348,7 +362,7 @@ const run = async () => {
         fs.writeFileSync(
             file,
             JSON.stringify(
-                { api: API, rpm: RPM, minutes: MINUTES, flow: FLOW, customers: CUSTOMERS, startedAt: new Date().toISOString(), totalRequests: totalReq, failedRequests: totalFail, achievedRpm: totalReq / elapsedMin, orders: { started, completed, failed }, steps: rows, overall: all, lifecycleMs: life, errors },
+                { api: API, rpm: RPM, minutes: MINUTES, flow: FLOW, customers: CUSTOMERS, shops: SHOPS, items: ITEMS, startedAt: new Date().toISOString(), totalRequests: totalReq, failedRequests: totalFail, achievedRpm: totalReq / elapsedMin, orders: { started, completed, failed }, steps: rows, overall: all, lifecycleMs: life, errors },
                 null,
                 2
             )

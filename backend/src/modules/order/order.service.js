@@ -76,13 +76,18 @@ const deliveryTerms = (mode, fulfillmentType, paymentMethod, route) => {
     return { deliveryMode, shipperFee: deliveryMode === 'PLATFORM' ? wallet.shipperFeeFor(route?.distanceKm) : 0 };
 };
 
-// Mã đơn theo ngày VN: MAK261006-0001 (bộ đếm nằm trong transaction nên đơn lỗi không làm nhảy số)
-const nextOrderCode = async (session) => {
+/**
+ * Mã đơn theo ngày VN: MAK261006-0001.
+ * Lấy số NGOÀI transaction đặt đơn (sửa 27/10/2026 sau test tải): bộ đếm của ngày là bản ghi mọi đơn cùng sửa,
+ * để trong transaction thì các đơn đặt đồng thời xung đột ghi (WriteConflict) và phải chạy lại liên tục.
+ * $inc vẫn nguyên tử nên không bao giờ trùng mã; đổi lại đơn đặt thất bại (hết suất, sai voucher...) làm nhảy số.
+ */
+const nextOrderCode = async () => {
     const day = toLocalDateKey();
     const counter = await Counter.findOneAndUpdate(
         { _id: `order:${day}` },
         { $inc: { seq: 1 } },
-        { upsert: true, returnDocument: 'after', session }
+        { upsert: true, returnDocument: 'after' }
     );
 
     return `MAK${day}-${String(counter.seq).padStart(4, '0')}`;
@@ -159,6 +164,8 @@ const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, 
     const orderable = await findOrderableRestaurant(restaurantId);
     const mode = await effectiveDeliveryMode(orderable);
     const plan = await planDelivery(orderable, fulfillmentType, delivery);
+    // Mã đơn lấy trước transaction (xem nextOrderCode); transaction tự chạy lại khi xung đột vẫn dùng mã này
+    const code = await nextOrderCode();
 
     let order;
 
@@ -188,7 +195,6 @@ const placeOrder = async ({ userId, key, restaurantId, inputs, fulfillmentType, 
             // 7. Tạo đơn + snapshot + hoa hồng; lưu idempotency key
             // Trả trước: chờ tiền về (PENDING_PAYMENT, chưa tới quán: placedAt = null), giữ suất tới hạn thanh toán
             const now = new Date();
-            const code = await nextOrderCode(session);
             const initial = prepaid ? 'PENDING_PAYMENT' : 'PLACED';
             [order] = await Order.create(
                 [
