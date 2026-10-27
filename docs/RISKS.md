@@ -48,7 +48,7 @@ Xác suất (P) và tác động (I) được chấm trước khi có biện ph�
 | R8 | Phình phạm vi, không kịp hoàn thiện MVP | Phạm vi | 4 | 4 | 16 | Cao | Né tránh + giảm thiểu | Trương An | Đang xử lý |
 | R9 | Thành viên vắng vì lý do cá nhân, sprint bị trễ | Con người | 3 | 3 | 9 | Trung bình | Chấp nhận + giảm thiểu | Trương An | Mở |
 | R10 | Tài liệu không khớp với code | Phạm vi | 3 | 2 | 6 | Thấp | Giảm thiểu | Trương An | Đã kiểm soát |
-| R11 | Nghẽn ghi khi nhiều khách đặt đơn cùng lúc | Kỹ thuật | 4 | 4 | 16 | Cao | Giảm thiểu | An Đức Mạnh | Đã kiểm soát (chờ đo lại trên VPS) |
+| R11 | Nghẽn ghi khi nhiều khách đặt đơn cùng lúc | Kỹ thuật | 4 | 4 | 16 | Cao | Giảm thiểu | An Đức Mạnh | Đã kiểm soát |
 
 Có 7 rủi ro sản phẩm / kỹ thuật (R1–R6, R11) và 4 rủi ro con người / phạm vi (R7–R10).
 
@@ -77,6 +77,17 @@ Có 7 rủi ro sản phẩm / kỹ thuật (R1–R6, R11) và 4 rủi ro con ng�
   | Trọn vòng đời 1 đơn: p50 | 118 giây | 3 giây |
 
   Kết luận: sức chịu thực tế của VPS chỉ khoảng 30–50 request/phút cho luồng đặt đơn, độ trễ vượt xa mức chấp nhận được (QUALITY.md). Cùng code chạy trên máy cá nhân nhanh hơn hàng nghìn lần, nên nguyên nhân là tài nguyên của VPS. Lỗi 500 khi đặt đơn được tách thành rủi ro R11.
+- **Đo lại 27/10/2026 sau khi sửa R11** (1 quán × 5 món, trừ dòng ghi "1 món"; mỗi lần 1 phút; backend không khởi động lại lần nào, pm2 giữ 240 lần):
+
+  | Mức tải | Đặt đơn p50 / p95 | Tất cả request p95 | Đơn trọn vòng đời | Lỗi |
+  |---|---|---|---|---|
+  | 20 request/phút | 0,79 / 0,86 giây | 0,88 giây | 4/4 | 0 |
+  | 40 request/phút | 0,72 / 1,58 giây | 1,24 giây | 7/7 | 0 |
+  | 60 request/phút | 0,85 / 1,66 giây | 1,31 giây | 10/10 | 0 |
+  | 60 request/phút, 1 món (xấu nhất) | 0,97 / 2,45 giây | 1,72 giây | 11/11 | 0 |
+
+  Kết luận: VPS chịu được khoảng 60 request/phút (khoảng 10 đơn/phút trọn vòng đời) với p95 đặt đơn dưới 2 giây khi đơn chia ra nhiều món. Ngay cả ở 20 request/phút, mỗi request vẫn mất 0,4–0,9 giây, chậm hơn máy cá nhân 10–20 lần. Chưa đo lại mức 100 request/phút.
+- **Bằng chứng do swap** (`vmstat 5` trong lúc test): cột `si`/`so` 11–81 MB/giây liên tục, CPU chờ ổ đĩa (`wa`) 14–54% trong khi CPU dùng thật (`us`) chỉ 1–9%. Đáng chú ý, cột `free` vẫn còn khoảng 105–125 MB trống mà hệ thống vẫn swap mạnh, khớp với giả thuyết các tiến trình bị giới hạn bộ nhớ riêng khi khởi động từ phiên SSH của lab (xem phát hiện bên dưới).
 - **Phát hiện thêm (21/10/2026):** vào VPS qua cổng SSH của lab (`ssh-lab.bcse-vju.com`) chỉ thấy khoảng 331 MB RAM, trong khi vào cùng máy bằng cách khác thấy 1,9 GB. Nhiều khả năng phiên SSH (và pm2 khởi động từ phiên đó) bị giới hạn bộ nhớ. Đang thu thập `hostname`, `MemTotal`, cgroup ở cả hai nơi để gửi lab.
 - **Hành động:**
   1. (Đã làm) Thêm swap, giới hạn bộ đệm MongoDB (`cacheSizeGB: 0.25`), tắt các dịch vụ hệ thống không cần.
@@ -85,7 +96,8 @@ Có 7 rủi ro sản phẩm / kỹ thuật (R1–R6, R11) và 4 rủi ro con ng�
   4. (Chưa làm) Tính toán phương án chuyển sang những cơ sở dữ liệu nhẹ hơn
   5. (Đã làm) Dự phòng cho buổi demo: chạy bản trên máy cá nhân (`localhost`) với dữ liệu mẫu `npm run seed:demo`.
   6. (Đã làm) Script đo kiểm tải `npm run loadtest:orders` (nhịp request, số quán / món tùy chỉnh, in độ trễ p50/p90/p95/p99 từng bước, `--cleanup` xóa dữ liệu test).
-  7. (Chưa làm) Đo lại sau khi sửa R11 và sau mỗi thay đổi hạ tầng, với `--rpm=20`, `40`, `60` để tìm mức tải cao nhất mà không lỗi và p95 đặt đơn dưới 2 giây.
+  7. (Đã làm) Đo lại sau khi sửa R11 ở 20, 40, 60 request/phút (bảng ở trên): mức tải cao nhất đạt yêu cầu hiện là khoảng 60 request/phút.
+  8. (Chưa làm) Đo lại mức 100 request/phút và sau mỗi thay đổi hạ tầng (tăng RAM, chuyển MongoDB sang Atlas) để so sánh.
 - **Phụ trách:** An Đức Mạnh · 
 - **Trạng thái:** Đang xử lý
 
@@ -213,10 +225,10 @@ Có 7 rủi ro sản phẩm / kỹ thuật (R1–R6, R11) và 4 rủi ro con ng�
   2. (Đã làm) Xung đột ghi còn sót lại sau khi transaction đã tự chạy lại trả **409 SYSTEM_BUSY** ("Hệ thống đang bận, vui lòng bấm thử lại") thay cho lỗi 500. Đặt đơn có Idempotency-Key nên bấm lại không tạo đơn trùng.
   3. (Đã làm) Script đo kiểm tải có tùy chọn nhiều quán, nhiều món (`--shops`, `--items`, mặc định 1 quán × 5 món) để đo sát thực tế; `--items=1` để thử trường hợp xấu nhất.
   4. (Đã làm) Test tự động cho việc ánh xạ lỗi xung đột ghi (`backend/tests/utils/error-middleware.test.js`).
-  5. (Chưa làm) Chạy lại đo kiểm tải trên VPS để xác nhận hết lỗi 500 và ghi số liệu mới vào đây.
+  5. (Đã làm) Đo lại trên VPS 27/10/2026: 20, 40, 60 request/phút và 60 request/phút dồn vào 1 món đều 0 lỗi, 32/32 đơn trọn vòng đời; đặt đơn p95 từ 0,86 đến 2,45 giây (trước khi sửa: 114 giây p50, 7,8% lỗi 500). Số liệu chi tiết ở R1.
   6. Chấp nhận: số suất của **cùng một món** vẫn là bản ghi dùng chung. Đây là điều kiện cần để không bán quá suất (R3); nhiều khách tranh đúng một món thì vẫn phải xếp hàng.
 - **Phụ trách:** An Đức Mạnh
-- **Trạng thái:** Đã kiểm soát (chờ đo lại trên VPS)
+- **Trạng thái:** Đã kiểm soát
 
 ## 4. Theo dõi
 - Rà soát bảng này ở mỗi Sprint Review: chấm lại P/I sau khi có biện pháp, cập nhật trạng thái, thêm rủi ro mới.
