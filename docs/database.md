@@ -183,7 +183,7 @@ Index:
 
 ### 3.6 `idempotencykeys` ✅
 
-Mã đơn dùng thêm collection `counters` (`{ _id: 'order:261006', seq }`, tăng trong cùng transaction).
+Mã đơn dùng thêm collection `counters` (`{ _id: 'order:261006', seq }`). Từ 27/10/2026 số thứ tự được lấy **trước** transaction đặt đơn (tăng nguyên tử, không trùng) để các đơn đặt đồng thời không xung đột ghi trên bộ đếm (RISKS R11); đơn đặt thất bại làm mã nhảy số.
 
 | Field | Kiểu | Ghi chú |
 |---|---|---|

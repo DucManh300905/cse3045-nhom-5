@@ -689,6 +689,7 @@ Mất kết nối: FE tải lại danh sách đơn khi kết nối lại (`useSo
 | `SCHEDULE_CLOSED` | 409 | Thêm khung sau giờ chốt lịch | ✅ |
 | `SHIFT_REGISTRATION_CLOSED` / `SHIFT_OVERLAP` / `SHIFT_STARTED` | 409 | Quá mốc đăng ký ca / trùng giờ ca khác / ca đã bắt đầu | ✅ |
 | `EMAIL_REQUIRED` / `EMAIL_VERIFICATION_REQUIRED` | 400 / 403 | Tài xế đăng ký không có email / chưa xác thực email (BR-103) | ✅ |
+| `SYSTEM_BUSY` | 409 | Xung đột ghi khi nhiều thao tác cùng sửa một bản ghi (transaction đã tự chạy lại mà vẫn xung đột). Chưa ghi gì, client thử lại được; đặt đơn có Idempotency-Key nên không tạo trùng (RISKS R11) | ✅ |
 | `INTERNAL_ERROR` | 500 | Lỗi không lường trước (đã log ở server) | ✅ |
 
 ---
