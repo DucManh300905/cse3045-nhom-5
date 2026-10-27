@@ -1,7 +1,7 @@
 # Rủi ro xác định — MAK Food and Drink
 
 > Nhóm 5, CSE3045. Cập nhật: 27/10/2026. Hạn MVP: 02/11/2026.
-> Tài liệu liên quan: [scrum.md](scrum.md) · [QUALITY.md](QUALITY.md) · [project.md](project.md)
+> Tài liệu liên quan: [scrum.md](scrum.md) · [QUALITY.md](QUALITY.md) · [project.md](project.md) · [loadtest.md](loadtest.md) (số liệu đo kiểm tải đầy đủ)
 
 ## 1. Cách đánh giá
 
