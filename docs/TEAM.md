@@ -1,6 +1,6 @@
 # Quản lý nhân lực và giao tiếp — MAK Food and Drink
 
-> Nhóm 5, CSE3045. Cập nhật: 27/10/2026.
+> Nhóm 5, CSE3045. Cập nhật: 12/11/2026.
 > Tài liệu liên quan: [scrum.md](scrum.md) (quy trình Scrum, vai trò) · [SPRINT0-REPORT.md](SPRINT0-REPORT.md) · [RISKS.md](RISKS.md)
 
 ## 1. Thành viên
@@ -8,8 +8,8 @@
 | Thành viên | MSSV | Vai trò Scrum | Thế mạnh chính |
 |---|---|---|---|
 | An Đức Mạnh | 23110310 | Scrum Master + Developer | Backend, CSDL, CI, triển khai VPS |
-| Trương An | 23110181 | Developer | Frontend (React + TypeScript) |
-| Lương Minh Khánh | 23110142 | Product Owner | Yêu cầu, kiểm thử thủ công, báo cáo, slide |
+| Trương An | 23110142 | Developer | Frontend (React + TypeScript) |
+| Lương Minh Khánh | 23110181 | Product Owner | Yêu cầu, kiểm thử thủ công, báo cáo, slide |
 
 ## 2. Bảng RACI
 
@@ -26,20 +26,21 @@
 
 | # | Mảng công việc | Đầu ra | Đức Mạnh | Minh Khánh | Trương An |
 |---|---|---|---|---|---|
-| 1 | Product Backlog và ưu tiên | GitHub Issues, mục "Features" trong [project.md](project.md), user story kèm tiêu chí nghiệm thu | R | C | **A** |
-| 2 | Backend, API, cơ sở dữ liệu | Code `backend/`, [API.md](API.md), [database.md](database.md) | R | **A** | I |
-| 3 | Frontend (giao diện 4 vai) | Code `frontend/` | **A** | R | C |
-| 4 | Kiểm thử tự động và CI | Test Jest, GitHub Actions xanh trước khi merge | R | **A** | I |
-| 5 | Kiểm thử nghiệm thu thủ công | Checklist 7 luồng nghiệm thu ([project.md](project.md) mục 9), danh sách lỗi dạng issue | **A** | C | R |
-| 6 | Triển khai VPS và phát hành | Bản chạy tại `https://sv22.bcse-vju.com`, `.env` trên VPS, số liệu [loadtest.md](loadtest.md) | R | C | **A** |
-| 7 | Tài liệu và báo cáo môn học | Các file trong `docs/`, báo cáo cuối kỳ | **A** | C | R |
-| 8 | Slide và kịch bản demo | Slide, kịch bản demo 3 phút, ảnh chụp màn hình | C | **A** | R |
-| 9 | Điều phối Sprint (Planning, Daily, Review, Retro, cập nhật bảng việc) | Biên bản họp, bảng Sprint Backlog cập nhật | **A** | R | C |
-| 10 | Quản lý rủi ro | [RISKS.md](RISKS.md) xem lại mỗi Sprint | **A** | I | R |
+| 1 | Product Backlog và ưu tiên | GitHub Issues, mục "Features" trong [project.md](project.md), user story kèm tiêu chí nghiệm thu | R | **A** | C |
+| 2 | Backend, API, cơ sở dữ liệu | Code `backend/`, [API.md](API.md), [database.md](database.md) | R | I | **A** |
+| 3 | Frontend (giao diện 4 vai) | Code `frontend/` | **A** | C | R |
+| 4 | Kiểm thử tự động và CI | Test Jest, GitHub Actions xanh trước khi merge | R | I | **A** |
+| 5 | Kiểm thử nghiệm thu thủ công | Checklist 7 luồng nghiệm thu ([project.md](project.md) mục 9), danh sách lỗi dạng issue | **A** | R | C |
+| 6 | Triển khai VPS và phát hành | Bản chạy tại `https://sv22.bcse-vju.com`, `.env` trên VPS, số liệu [loadtest.md](loadtest.md) | R | **A** | C |
+| 7 | Tài liệu và báo cáo môn học | Các file trong `docs/`, báo cáo cuối kỳ | **A** | R | C |
+| 8 | Slide và kịch bản demo | Slide, kịch bản demo 3 phút, ảnh chụp màn hình | C | R | **A** |
+| 9 | Điều phối Sprint (Planning, Daily, Review, Retro, cập nhật bảng việc) | Biên bản họp, bảng Sprint Backlog cập nhật | R | **A** | C |
+| 10 | Quản lý rủi ro | [RISKS.md](RISKS.md) xem lại mỗi Sprint | **A** | R | I |
 
 Ghi chú:
 - Dòng 6: PO là A vì PO quyết định khi nào phát hành bản mới cho người dùng thử.
-- Dòng 9: cột R thuộc về người điều phối của Sprint hiện tại. Bảng trên là Sprint 1 (Minh Khánh điều phối). Sang Sprint khác, chữ R chuyển theo lịch luân phiên ở mục 3; các ô khác giữ nguyên.
+- Dòng 9: PO là A vì PO chịu trách nhiệm cuối về việc Sprint đạt mục tiêu.
+- Dòng 9: cột R thuộc về người điều phối của Sprint hiện tại. Bảng trên là Sprint 1 (An Đức Mạnh điều phối). Sang Sprint khác, chữ R chuyển theo lịch luân phiên ở mục 3; các ô khác giữ nguyên.
 - Mảng nào có 2 người cùng code (ví dụ một tính năng cần cả API và giao diện) thì vẫn tách thành 2 issue, mỗi issue một R.
 
 ## 3. Luân phiên vai điều phối theo Sprint
@@ -48,14 +49,17 @@ Vai trò Scrum (PO, Developer) cố định. Riêng **vai điều phối Sprint*
 
 | Sprint | Thời gian | Người điều phối | Người dự phòng |
 |---|---|---|---|
-| Sprint 0 | 03/10 – 26/10/2026 | An Đức Mạnh | Trương An |
-| Sprint 1 | 28/10 – 03/11/2026 | Lương Minh Khánh | An Đức Mạnh |
-| Sprint 2 | 04/11 – 10/11/2026 | Trương An | Lương Minh Khánh |
-| Sprint 3 trở đi | Lặp lại theo thứ tự Mạnh → Khánh → An | | |
+| Sprint 0 | 03/10 – 26/10/2026 | An Đức Mạnh | Lương Minh Khánh |
+| Sprint 1 | Từ 28/10/2026 (đang chạy) | An Đức Mạnh | Lương Minh Khánh |
+| Sprint 2 | Sau Sprint 1 | Lương Minh Khánh | Trương An |
+| Sprint 3 | Sau Sprint 2 | Trương An | An Đức Mạnh |
+| Sprint 4 trở đi | Lặp lại theo thứ tự Mạnh → Khánh → An | | |
+
+Sprint 1 vẫn do Mạnh điều phối vì đây là Sprint phát hành bản đầu tiên (v0.1.0) và xử lý VPS; luân phiên bắt đầu từ Sprint 2.
 
 **Việc của người điều phối trong Sprint:**
 1. Chủ trì Sprint Planning (đầu Sprint), Sprint Review và Retrospective (cuối Sprint).
-2. Mỗi tối kiểm tra tin Daily của cả nhóm. Ai chưa gửi trước 22:00 thì nhắc.
+2. Cách 3 ngày một lần, kiểm tra tin Daily của cả nhóm. Ai chưa gửi trước 22:00 ngày Daily thì nhắc.
 3. Giữ bảng Sprint Backlog (GitHub Issues / Projects) khớp với thực tế: issue nào đang làm, xong, bị chặn.
 4. Ghi biên bản Planning / Review / Retro vào một issue nhãn `meeting`.
 5. Là đầu mối báo tin xấu lên giảng viên nếu Sprint có nguy cơ trễ (mục 4.4).
@@ -86,12 +90,12 @@ Quyền merge vào `develop` không đi theo luân phiên. Mọi PR vẫn cần 
 - PR chờ review: người A review trong 24 giờ.
 - Quá thời gian trên thì gọi điện, không nhắn thêm.
 
-### 4.2 Mẫu Daily Scrum (gửi trong nhóm chat trước 22:00)
+### 4.2 Mẫu Daily Scrum (cách 3 ngày một lần, gửi trong nhóm chat trước 22:00)
 
 ```
 [Daily dd/mm] Tên
-- Hôm qua: ... (#issue)
-- Hôm nay: ... (#issue)
+- Đã làm (từ lần trước): ... (#issue)
+- Sắp làm: ... (#issue)
 - Vướng: không / ... (cần ai giúp)
 ```
 
@@ -115,7 +119,7 @@ Quy tắc: Quyết định chưa ghi vào GitHub thì coi như chưa có. Quyế
 
 Tin xấu gồm: trễ hạn, lỗi trên production, làm hỏng dữ liệu, lộ bí mật, không làm được việc đã nhận, ốm hoặc bận đột xuất.
 
-1. **Báo sớm.** Báo ngay khi thấy khả năng trễ quá 1 ngày so với ước lượng, không đợi tới Daily hoặc tới hạn. Báo sớm không bị trách; giấu tới phút cuối mới là lỗi.
+1. **Báo sớm.** Báo ngay khi thấy khả năng trễ quá 1 ngày so với ước lượng, không đợi tới lần Daily kế tiếp (cách 3 ngày) hoặc tới hạn. Báo sớm không bị trách; giấu tới phút cuối mới là lỗi.
 2. **Báo trên kênh chung**, không nhắn riêng: tag người A của mảng và người điều phối Sprint.
 3. **Theo mẫu 5 dòng** để người nghe quyết định được ngay:
    ```
