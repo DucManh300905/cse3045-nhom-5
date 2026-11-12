@@ -1,7 +1,8 @@
-# Áp dụng Scrum cho đồ án — MAK Food and Drink
+# Scrum cho đồ án — MAK Food and Drink
 
 > Nhóm 5, CSE3045. Website đặt đồ ăn online cho các hàng ăn khu vực Hòa Lạc, gồm 3 vai người dùng: khách hàng, chủ quán, quản trị viên.
-> Tài liệu liên quan: [project.md](project.md) (phạm vi, lộ trình), [API.md](API.md), [database.md](database.md).
+> Tài liệu liên quan: [project.md](project.md) (phạm vi, lộ trình) · [TEAM.md](TEAM.md) (RACI, giao tiếp) · [SPRINT0-REPORT.md](SPRINT0-REPORT.md) (kết quả Sprint 0, phạm vi Sprint 1) · [GIT.md](GIT.md) · [API.md](API.md) · [database.md](database.md).
+> Cập nhật: 12/11/2026.
 
 ## 1. Quy trình: Scrum
 
@@ -14,10 +15,10 @@ Nhóm chọn Scrum vì:
 |---|---|
 | Sprint | 1 tuần |
 | Sprint Planning | Đầu tuần: chọn việc từ Product Backlog vào Sprint Backlog |
-| Daily Scrum | Mỗi tối, 10 phút trên nhóm chat: hôm qua làm gì, hôm nay làm gì, đang vướng gì |
-| Sprint Review | Cuối tuần: demo bản chạy được cho cả nhóm / trên lớp |
+| Daily Scrum | Cách 3 ngày một lần, trên nhóm chat: đã làm gì từ lần trước, sắp làm gì, đang vướng gì (mẫu ở [TEAM.md](TEAM.md) mục 4.2) |
+| Sprint Review | Cuối Sprint: demo bản chạy được cho cả nhóm |
 | Retrospective | Sau Review: 1 điều làm tốt, 1 điều cần cải thiện |
-| Công cụ | GitHub (code, Pull Request, review), Jest + GitHub Actions (kiểm thử tự động), thư mục `docs/` (đặc tả) |
+| Công cụ | GitHub (code, Pull Request, review, tag phát hành), Jest + GitHub Actions (kiểm thử tự động), thư mục `docs/` (đặc tả) |
 
 **Definition of Done** — một hạng mục chỉ được tính là xong khi:
 1. Code đã qua review và được merge vào `develop`.
@@ -29,9 +30,9 @@ Nhóm chọn Scrum vì:
 
 | Thành viên | MSSV | Vai trò Scrum | Phụ trách chính |
 |---|---|---|---|
-| **An Đức Mạnh** | 23110310 | **Scrum Master / điều phối** + Developer | **Backend**: Node.js/Express, MongoDB, API, realtime, kiểm thử tự động, CI, triển khai lên VPS. Tổ chức các buổi họp Scrum, review và merge Pull Request. |
-| **Lương Minh Khánh** | 23110181 | Developer | **Frontend**: React + TypeScript (Vite). Giao diện khách hàng, kênh chủ quán, trang quản trị; nối giao diện với API. |
-| **Trương An** | _(bổ sung)_ | **Product Owner** + phụ trách tài liệu | **Báo cáo / tài liệu**: quản lý Product Backlog, viết user story và tiêu chí nghiệm thu, WBS/Gantt, báo cáo, slide. Kiểm thử thủ công các luồng chính trước mỗi buổi demo. |
+| **An Đức Mạnh** | 23110310 | Scrum Master + Developer | **Backend**: Node.js/Express, MongoDB, API, realtime, kiểm thử tự động, CI, triển khai lên VPS, quản lý cấu hình (tag phát hành). Review và merge Pull Request. Điều phối Sprint 0 và Sprint 1 ([TEAM.md](TEAM.md) mục 3). |
+| **Trương An** | 23110142 | Developer | **Frontend**: React + TypeScript (Vite). Giao diện khách hàng, kênh chủ quán, tài xế, trang quản trị; nối giao diện với API. |
+| **Lương Minh Khánh** | 23110181 | Product Owner + phụ trách tài liệu | **Báo cáo / tài liệu**: quản lý Product Backlog, viết user story và tiêu chí nghiệm thu, WBS/Gantt, báo cáo, slide. Kiểm thử thủ công các luồng chính trước mỗi buổi demo. Phê duyệt phát hành. |
 
 ## 3. (b) Backlog Sprint 0
 
@@ -41,56 +42,50 @@ SP là story point ước lượng độ khó tương đối. ✅ là đã hoàn
 
 | # | Hạng mục / User story | Người phụ trách | SP | Tiêu chí hoàn thành | Trạng thái |
 |---|---|---|---|---|---|
-| 1 | Chốt phạm vi MVP, 3 vai người dùng, luồng nghiệm thu | Trương An | 3 | Có danh sách tính năng MVP và luồng nghiệm thu ([project.md](project.md)) | ✅ |
-| 2 | Lập WBS và Gantt cho MVP | Trương An | 2 | `HW3/WBS food ordering.png`, `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` | ✅ |
+| 1 | Chốt phạm vi MVP, 3 vai người dùng, luồng nghiệm thu | Lương Minh Khánh | 3 | Có danh sách tính năng MVP và luồng nghiệm thu ([project.md](project.md)) | ✅ |
+| 2 | Lập WBS và Gantt cho MVP | Lương Minh Khánh | 2 | `HW3/WBS food ordering.png`, `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` | ✅ |
 | 3 | Tạo repo GitHub, quy ước nhánh `main` / `develop` / `feature/*`, làm việc qua Pull Request | Đức Mạnh | 1 | Mọi thay đổi vào `develop` đều qua PR | ✅ |
-| 4 | Chọn tech stack, khởi tạo backend (Express + MongoDB) và frontend (React + Vite) | Đức Mạnh, Minh Khánh | 2 | Cả hai chạy được trên máy bằng `npm run dev` | ✅ |
+| 4 | Chọn tech stack, khởi tạo backend (Express + MongoDB) và frontend (React + Vite) | Đức Mạnh, Trương An | 2 | Cả hai chạy được trên máy bằng `npm run dev` | ✅ |
 | 5 | Thiết kế cơ sở dữ liệu: người dùng, quán, thực đơn, đơn hàng | Đức Mạnh | 3 | [database.md](database.md) | ✅ |
 | 6 | Đặc tả API và mã lỗi | Đức Mạnh | 3 | [API.md](API.md) | ✅ |
 | 7 | Kiểm thử tự động + CI (Jest, GitHub Actions) | Đức Mạnh | 2 | Test tự chạy mỗi lần push / mở PR | ✅ |
-| 8 | Phác thảo giao diện khách: trang chủ, danh sách quán, trang quán, giỏ hàng, thanh toán | Minh Khánh | 5 | Bản HTML đầu tiên (`HW1/`) → giao diện React | ✅ |
-| 9 | *Là khách / chủ quán, tôi muốn đăng ký, đăng nhập để dùng hệ thống* | Mạnh (API), Khánh (giao diện) | 3 | Đăng nhập được theo từng vai; mật khẩu được mã hóa | ✅ |
-| 10 | *Là khách, tôi muốn xem danh sách quán và thực đơn* (+ dữ liệu mẫu để demo) | Mạnh, Khánh | 3 | Dữ liệu lấy từ API; `npm run seed:demo` tạo sẵn quán mẫu | ✅ |
-| 11 | *Là khách, tôi muốn đặt món và trả tiền mặt khi nhận* | Mạnh, Khánh | 5 | Giá do server tính; không đặt quá số suất còn lại | ✅ |
-| 12 | Chuẩn bị demo: kịch bản, ảnh chụp, tài khoản demo | Trương An | 1 | Có kịch bản demo 3 phút và ảnh (mục 4) | ⬜ |
-| 13 | Môi trường chạy thử trên VPS của lab | Đức Mạnh | 2 | Truy cập được bằng đường link | 🟡 Đã chạy nhưng chậm vì VPS chỉ có ~331MB RAM; đang xin cấp thêm |
+| 8 | Phác thảo giao diện khách: trang chủ, danh sách quán, trang quán, giỏ hàng, thanh toán | Trương An | 5 | Bản HTML đầu tiên (`HW1/`) → giao diện React | ✅ |
+| 9 | *Là khách / chủ quán, tôi muốn đăng ký, đăng nhập để dùng hệ thống* | Mạnh (API), An (giao diện) | 3 | Đăng nhập được theo từng vai; mật khẩu được mã hóa | ✅ |
+| 10 | *Là khách, tôi muốn xem danh sách quán và thực đơn* (+ dữ liệu mẫu để demo) | Mạnh, An | 3 | Dữ liệu lấy từ API; `npm run seed:demo` tạo sẵn quán mẫu | ✅ |
+| 11 | *Là khách, tôi muốn đặt món và trả tiền mặt khi nhận* | Mạnh, An | 5 | Giá do server tính; không đặt quá số suất còn lại | ✅ |
+| 12 | Chuẩn bị demo: kịch bản, ảnh chụp, tài khoản demo | Lương Minh Khánh | 1 | Có kịch bản demo 3 phút và ảnh (mục 4) | 🟡 Có kịch bản và tài khoản demo; còn thiếu ảnh chụp màn hình (chuyển sang Sprint 1, S1-5) |
+| 13 | Môi trường chạy thử trên VPS của lab | Đức Mạnh | 2 | Truy cập được bằng đường link | ✅ Chạy tại `https://sv22.bcse-vju.com`. Hiệu năng còn thấp do VPS thiếu RAM ([loadtest.md](loadtest.md), RISKS R1), xử lý ở Sprint 1 (S1-1) |
 
-**Tổng: 35 SP**, đã xong 32 SP.
+**Tổng: 35 SP**, đã xong 34 SP. Chi tiết và bằng chứng (link commit / PR): [SPRINT0-REPORT.md](SPRINT0-REPORT.md).
 
-**Chuyển sang Sprint 1 trở đi (Product Backlog còn lại):**
-- voucher;
-- rà soát bảo mật và phân quyền chéo giữa các quán;
-- ổn định môi trường VPS;
-- kiểm thử toàn bộ luồng nghiệm thu;
-- hoàn thiện báo cáo và slide.
+**Sprint 1 (đang chạy):** phạm vi, người phụ trách và tiêu chí hoàn thành ở [SPRINT0-REPORT.md](SPRINT0-REPORT.md) mục 5. Tóm tắt:
+- ổn định VPS (RAM / chuyển MongoDB sang Atlas) và đo lại tải;
+- kiểm thử thủ công 7 luồng nghiệm thu trên VPS, sửa lỗi giao diện;
+- rà soát bảo mật, phân quyền chéo giữa các quán; đổi khóa trên VPS;
+- ảnh chụp màn hình cho demo, slide và báo cáo cuối kỳ;
+- phát hành bản đầu tiên có tag `v0.1.0` ([GIT.md](GIT.md) mục 5).
 
 ## 4. (c) Demo ý tưởng / MVP
 
 - **Mã nguồn:** https://github.com/DucManh300905/cse3045-nhom-5 (nhánh `develop`)
-- **Bản chạy thử:** `https://<địa chỉ>.trycloudflare.com` — điền đường link lúc demo vì địa chỉ đổi mỗi lần khởi động lại tunnel. Dự phòng: chạy trên máy cá nhân tại `http://localhost:5173`.
-- **Tài khoản demo** (tạo bởi `npm run seed:demo`):
-  - Khách: `khach@mak.com` / `Demo@123`
-  - Chủ quán: `owner.quana@mak.com` / `Demo@123`
+- **Bản chạy thử:** `https://sv22.bcse-vju.com` (VPS lab, nhánh `develop`). Dự phòng: chạy trên máy cá nhân tại `http://localhost:5173`.
+- **Phiên bản phát hành:** tag `v0.1.0` trên nhánh `main`.
+- **Tài khoản demo** (tạo bởi `npm run seed:demo`; mật khẩu lấy từ `DEMO_PASSWORD` trong `.env`, không ghi trong repo):
+  - Khách: `khach@mak.com`
+  - Chủ quán: `owner.quana@mak.com`
 
 ### Ảnh chụp màn hình
 
-Lưu ảnh vào `docs/images/` với đúng tên bên dưới thì ảnh sẽ hiện trong tài liệu này.
+Chưa có ảnh (thư mục `docs/images/` chưa được tạo), làm ở Sprint 1 (S1-5). Danh sách ảnh cần chụp:
 
 | # | Màn hình | File |
 |---|---|---|
 | 1 | Trang chủ / danh sách quán (điểm đánh giá, trạng thái "Đang nhận đơn") | `images/01-danh-sach-quan.png` |
 | 2 | Trang quán: thực đơn, hộp chọn size/topping | `images/02-trang-quan.png` |
-| 3 | Giỏ hàng và thanh toán (giá do server tính, miễn phí giao hàng) | `images/03-thanh-toan.png` |
+| 3 | Giỏ hàng và thanh toán (giá do server tính, voucher, tiền mặt / VietQR) | `images/03-thanh-toan.png` |
 | 4 | Kênh chủ quán: nhận đơn mới, chuông realtime | `images/04-chu-quan-nhan-don.png` |
-| 5 | "Đơn của tôi" phía khách: thanh tiến trình trạng thái đơn | `images/05-theo-doi-don.png` |
+| 5 | "Đơn của tôi" phía khách: thanh tiến trình trạng thái đơn, ảnh tài xế | `images/05-theo-doi-don.png` |
 | 6 | Trang quản trị: duyệt hồ sơ quán | `images/06-admin-duyet-quan.png` |
-
-![Danh sách quán](images/01-danh-sach-quan.png)
-![Trang quán](images/02-trang-quan.png)
-![Thanh toán](images/03-thanh-toan.png)
-![Chủ quán nhận đơn](images/04-chu-quan-nhan-don.png)
-![Theo dõi đơn](images/05-theo-doi-don.png)
-![Admin duyệt quán](images/06-admin-duyet-quan.png)
 
 Kế hoạch: ![WBS](../HW3/WBS%20food%20ordering.png)
 

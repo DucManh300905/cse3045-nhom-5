@@ -1,6 +1,6 @@
 {
   "name": "cse3045-nhom-5",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Đây là dự án xây dựng **Website bán hàng online cho các hàng ăn trên khu vực Hòa Lạc**.",
   "main": "index.js",
   "directories": {

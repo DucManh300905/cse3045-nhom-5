@@ -46,6 +46,16 @@ const errorHandler = (err, req, res, next) => {
         });
     }
 
+    // Xung đột ghi khi nhiều thao tác cùng sửa một bản ghi (transaction đã tự chạy lại mà vẫn xung đột).
+    // Thao tác chưa được ghi gì; client thử lại được — đặt đơn có Idempotency-Key nên không bị tạo trùng.
+    if (err.code === 112 || err.codeName === 'WriteConflict' || err.errorLabelSet?.has?.('TransientTransactionError')) {
+        return res.status(409).json({
+            success: false,
+            message: 'The system is busy, please try again',
+            code: 'SYSTEM_BUSY'
+        });
+    }
+
     // Trùng unique index
     if (err.code === 11000) {
         const field = Object.keys(err.keyPattern || {})[0];

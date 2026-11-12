@@ -120,6 +120,7 @@ const CODE_MESSAGES: Record<string, string> = {
   OTP_LIMIT: 'Email này đã yêu cầu quá nhiều mã. Vui lòng thử lại sau 1 giờ.',
   MAIL_FAILED: 'Không gửi được email xác thực. Vui lòng thử lại.',
   RATE_LIMITED: 'Bạn thử quá nhiều lần. Vui lòng đợi khoảng 15 phút rồi thử lại.',
+  SYSTEM_BUSY: 'Hệ thống đang bận do nhiều người đặt cùng lúc, vui lòng bấm thử lại.',
   INTERNAL_ERROR: 'Máy chủ gặp sự cố, vui lòng thử lại sau.',
 };
 

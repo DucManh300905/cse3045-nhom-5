@@ -13,7 +13,7 @@ QC (Quality Control) là các ca kiểm tra trên sản phẩm, để phát hi�
 | Q1 | Đúng nghiệp vụ (backend) | 0 test lỗi trên CI cho mỗi Pull Request; mỗi endpoint MVP có ít nhất 1 ca thành công và 1 ca lỗi; 7/7 tình huống nghiệp vụ cốt lõi có test | An Đức Mạnh | ✅ 265/265 test pass, 22 bộ test |
 | Q2 | Bảo mật & phân quyền | 0 bí mật trong repo; sai vai trò → 403 ở mọi nhóm route quản trị; khóa đăng nhập sau 10 lần sai / 15 phút | An Đức Mạnh | 🟡 Còn thu hồi mật khẩu Gmail cũ |
 | Q3 | Hiệu năng & realtime | API danh sách quán ≤ 300 ms trên máy, ≤ 1 s trên VPS (trung vị 20 lần đo); đơn mới hiện ở trang quán ≤ 2 s | An Đức Mạnh | 🟡 Máy đạt; VPS 3,2 s (thiếu RAM — RISKS R1) |
-| Q4 | Luồng nghiệm thu & dễ dùng | 7/7 luồng nghiệm thu chạy được bằng tay; khách mới đặt được đơn đầu tiên trong ≤ 3 phút; 0 thông báo lỗi tiếng Anh ở các luồng chính | Trương An, Lương Minh Khánh | 🟡 6/7 luồng (thiếu voucher) |
+| Q4 | Luồng nghiệm thu & dễ dùng | 7/7 luồng nghiệm thu chạy được bằng tay; khách mới đặt được đơn đầu tiên trong ≤ 3 phút; 0 thông báo lỗi tiếng Anh ở các luồng chính | Lương Minh Khánh, Trương An | 🟡 6/7 luồng (thiếu voucher) |
 
 ---
 
@@ -140,4 +140,4 @@ QC (Quality Control) là các ca kiểm tra trên sản phẩm, để phát hi�
 
 **Hiện trạng:** 6/7 luồng đạt; luồng 3 còn thiếu voucher (Sprint 1).
 
-**Phụ trách:** Trương An (chạy kiểm tra, ghi bằng chứng), Lương Minh Khánh (sửa lỗi giao diện).
+**Phụ trách:** Lương Minh Khánh (chạy kiểm tra, ghi bằng chứng), Trương An (sửa lỗi giao diện).
