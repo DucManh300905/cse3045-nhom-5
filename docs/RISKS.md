@@ -43,11 +43,11 @@ Xác suất (P) và tác động (I) được chấm trước khi có biện ph�
 | R3 | Bán quá số suất khi nhiều khách đặt cùng lúc | Sản phẩm | 4 | 4 | 16 | Cao | Giảm thiểu | An Đức Mạnh | Đã kiểm soát |
 | R4 | Sai lệch tiền: giá đơn, hoa hồng, số dư ví | Sản phẩm | 3 | 5 | 15 | Cao | Giảm thiểu | An Đức Mạnh | Đã kiểm soát |
 | R5 | Khách chuyển khoản nhưng đơn không được xác nhận | Sản phẩm | 3 | 4 | 12 | Trung bình | Giảm thiểu + chấp nhận | An Đức Mạnh | Đã kiểm soát |
-| R6 | Chủ quán nhầm giờ mở cửa (SA/CH), quán đóng ngoài ý muốn | Sản phẩm | 4 | 3 | 12 | Trung bình | Giảm thiểu | Lương Minh Khánh | Mở |
+| R6 | Chủ quán nhầm giờ mở cửa (SA/CH), quán đóng ngoài ý muốn | Sản phẩm | 4 | 3 | 12 | Trung bình | Giảm thiểu | Trương An | Mở |
 | R7 | Kiến thức và khối lượng code dồn vào một người | Con người | 4 | 5 | 20 | Cao | Giảm thiểu | An Đức Mạnh | Đang xử lý |
-| R8 | Phình phạm vi, không kịp hoàn thiện MVP | Phạm vi | 4 | 4 | 16 | Cao | Né tránh + giảm thiểu | Trương An | Đang xử lý |
-| R9 | Thành viên vắng vì lý do cá nhân, sprint bị trễ | Con người | 3 | 3 | 9 | Trung bình | Chấp nhận + giảm thiểu | Trương An | Mở |
-| R10 | Tài liệu không khớp với code | Phạm vi | 3 | 2 | 6 | Thấp | Giảm thiểu | Trương An | Đã kiểm soát |
+| R8 | Phình phạm vi, không kịp hoàn thiện MVP | Phạm vi | 4 | 4 | 16 | Cao | Né tránh + giảm thiểu | Lương Minh Khánh | Đang xử lý |
+| R9 | Thành viên vắng vì lý do cá nhân, sprint bị trễ | Con người | 3 | 3 | 9 | Trung bình | Chấp nhận + giảm thiểu | Lương Minh Khánh | Mở |
+| R10 | Tài liệu không khớp với code | Phạm vi | 3 | 2 | 6 | Thấp | Giảm thiểu | Lương Minh Khánh | Đã kiểm soát |
 | R11 | Nghẽn ghi khi nhiều khách đặt đơn cùng lúc | Kỹ thuật | 4 | 4 | 16 | Cao | Giảm thiểu | An Đức Mạnh | Đã kiểm soát |
 
 Có 7 rủi ro sản phẩm / kỹ thuật (R1–R6, R11) và 4 rủi ro con người / phạm vi (R7–R10).
@@ -165,7 +165,7 @@ Có 7 rủi ro sản phẩm / kỹ thuật (R1–R6, R11) và 4 rủi ro con ng�
   1. (Chưa làm) Hiện kèm giờ 24h cạnh ô nhập ("đóng lúc 12:00 trưa") và cảnh báo khi giờ đóng sớm bất thường.
   2. (Chưa làm) Trang khách ghi rõ lý do: "Ngoài giờ mở cửa · mở lại lúc 06:00", "Quán tạm ngưng nhận đơn".
   3. (Đã làm) Ghi vào tài liệu hướng dẫn chạy (bảng lỗi hay gặp).
-- **Phụ trách:** Lương Minh Khánh, Trương An
+- **Phụ trách:** Trương An, Lương Minh Khánh
 - **Trạng thái:** Mở
 
 ### R7 — Kiến thức dồn vào một người (mức Cao, 20 điểm)
@@ -176,7 +176,7 @@ Có 7 rủi ro sản phẩm / kỹ thuật (R1–R6, R11) và 4 rủi ro con ng�
 - **Hậu quả:** dự án đứng; thành viên không trả lời được khi bảo vệ; điểm cá nhân thấp.
 - **Hành động:**
   1. (Đã làm) Tài liệu "Hướng dẫn chạy MAK Food trên máy" để mọi thành viên tự chạy được dự án.
-  2. (Chưa làm) Từ Sprint 1, Lương Minh Khánh nhận các việc frontend (R6, giao diện voucher). Mọi Pull Request phải có **1 người khác review** trước khi merge.
+  2. (Chưa làm) Từ Sprint 1, Trương An nhận các việc frontend (R6, giao diện voucher). Mọi Pull Request phải có **1 người khác review** trước khi merge.
   3. (Chưa làm) Mỗi thành viên tự demo được trọn luồng nghiệm thu trước 30/10/2026.
   4. (Chưa làm) Buổi đọc code 1 giờ mỗi tuần: người viết giải thích module mình làm.
 - **Phụ trách:** An Đức Mạnh (Scrum Master) · 
@@ -190,7 +190,7 @@ Có 7 rủi ro sản phẩm / kỹ thuật (R1–R6, R11) và 4 rủi ro con ng�
   1. (Đã làm) Product Owner quản lý Product Backlog (`docs/scrum.md`); mọi tính năng mới phải qua Sprint Planning.
   2. (Chưa làm) *Né tránh:* đóng băng tính năng mới từ 26/10/2026. Sau mốc này chỉ sửa lỗi, kiểm thử, viết báo cáo.
   3. (Chưa làm) Ưu tiên Sprint 1: voucher → kiểm thử luồng nghiệm thu → báo cáo. Tính năng ngoài MVP để sau.
-- **Phụ trách:** Trương An (Product Owner) · **Trạng thái:** Đang xử lý
+- **Phụ trách:** Lương Minh Khánh (Product Owner) · **Trạng thái:** Đang xử lý
 
 ### R9 — Thành viên vắng vì lý do cá nhân (mức Trung bình, 9 điểm)
 - **Nguyên nhân:** cả 3 thành viên học song song nhiều môn, thực tập, lịch trùng với các sprint cuối.
@@ -210,7 +210,7 @@ Có 7 rủi ro sản phẩm / kỹ thuật (R1–R6, R11) và 4 rủi ro con ng�
 - **Hành động:**
   1. (Đã làm) Definition of Done yêu cầu cập nhật `docs/` trong cùng Pull Request.
   2. (Đã làm) `docs/project.md` mục 11 ghi nhật ký tiến độ từng bước, kèm số test.
-- **Phụ trách:** Trương An · 
+- **Phụ trách:** Lương Minh Khánh · 
 - **Trạng thái:** Đã kiểm soát
 
 ### R11 — Nghẽn ghi khi nhiều khách đặt đơn cùng lúc (mức Cao, 16 điểm)

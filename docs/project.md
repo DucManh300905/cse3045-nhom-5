@@ -2,8 +2,8 @@
 
 > Nền tảng đặt đồ ăn online cho các hàng ăn khu vực Hòa Lạc — Nhóm 5, CSE3045.
 > Nguồn: `ke_hoach_backend_merchant.docx` (v1.0 – 06/10/2026), đã điều chỉnh theo code hiện có và Gantt MVP trong `HW3/`.
-> Tài liệu liên quan: [database.md](database.md) · [API.md](API.md) · [scrum.md](scrum.md) (quy trình Scrum, phân vai, backlog Sprint 0)
-> **Cập nhật lần cuối: 06/10/2026** — sau Bước 6b (xem [mục 11 — Nhật ký tiến độ](#11-nhật-ký-tiến-độ-backend)).
+> Tài liệu liên quan: [database.md](database.md) · [API.md](API.md) · [scrum.md](scrum.md) (quy trình Scrum, phân vai, backlog Sprint 0) · [TEAM.md](TEAM.md) · [CONFIG.md](CONFIG.md) · [GIT.md](GIT.md) · [RISKS.md](RISKS.md)
+> **Cập nhật lần cuối: 12/11/2026** — phiên bản **v0.1.0** (xem [mục 11 — Nhật ký tiến độ](#11-nhật-ký-tiến-độ-backend)).
 
 Ký hiệu trạng thái: ✅ đã xong · 🟡 đang làm / làm một phần · ⬜ chưa làm · ⏭️ để sau MVP
 
@@ -11,33 +11,33 @@ Ký hiệu trạng thái: ✅ đã xong · 🟡 đang làm / làm một phần �
 
 ## 1. Mục tiêu và phạm vi
 
-- Kết nối **khách hàng** với **các quán ăn ở Hòa Lạc**: khách tìm món, đặt hàng, theo dõi đơn; quán quản lý cửa hàng, thực đơn, đơn hàng; quản trị viên duyệt quán và giám sát nền tảng.
-- File docx tập trung vào **phân hệ Chủ nhà hàng (Merchant)**. Tài liệu này giữ toàn bộ nghiệp vụ của docx nhưng **chia lại phạm vi** cho phù hợp với nhóm 3 người và hạn MVP **02/11/2026**:
-  - **MVP (đến 02/11/2026):** những gì cần để một đơn đi trọn vòng: khách đặt → quán nhận → giao → hoàn thành.
-  - **Sau MVP:** nhân viên nhiều vai trò, ví/đối soát, quảng cáo, đơn hẹn giờ, in phiếu bếp…
+- Kết nối khách hàng với các quán ăn ở Hòa Lạc: khách tìm món, đặt hàng, theo dõi đơn; quán quản lý cửa hàng, thực đơn, đơn hàng; quản trị viên duyệt quán và giám sát nền tảng.
+- File docx tập trung vào phân hệ Chủ nhà hàng (Merchant). Tài liệu này giữ toàn bộ nghiệp vụ của docx cho phù hợp với nhóm 3 người và hạn MVP **02/11/2026**:
+  - MVP (đến 02/11/2026): những gì cần để một đơn đi trọn vòng: khách đặt → quán nhận → giao → hoàn thành.
+  - Sau MVP: nhân viên nhiều vai trò, ví/đối soát, quảng cáo, đơn hẹn giờ, in phiếu bếp…
 
 ---
 
 ## 2. Tech stack
 
-Repo **đã chạy trên MongoDB/Express/React**, nên giữ stack hiện tại và thay từng thành phần nặng bằng phương án nhẹ hơn:
+Repo đã chạy trên MongoDB/Express/React:
 
 | Hạng mục | Docx gợi ý | Dự án dùng | Trạng thái |
 |---|---|---|---|
 | Backend | — | Node.js 20 + Express 5 (CommonJS) | ✅ |
-| Database | PostgreSQL | **MongoDB + Mongoose 9** (transaction cần replica set — MongoDB Atlas có sẵn) | ✅ |
+| Database | PostgreSQL | MongoDB + Mongoose 9 (transaction cần replica set — trên VPS chạy replica set 1 node, `cacheSizeGB: 0.25`) | ✅ |
 | Xác thực | JWT + refresh token | `jsonwebtoken` + `bcryptjs`, access token 1 ngày, kiểm tra lại user mỗi request; refresh token ⏭️ | ✅ / ⏭️ |
 | Validate | — | `express-validator` (rule dùng chung ở `utils/validationRules.js`) | ✅ |
 | Xử lý lỗi | — | `AppError` + `asyncHandler` + `errorHandler`, response có `code` | ✅ |
-| Realtime | WebSocket/SSE + FCM | **Socket.IO** (`src/realtime/socket.js`) | ✅ |
-| Job hẹn giờ (timeout đơn, reset suất) | Message queue | **node-cron** (quét định kỳ trong cùng process, `src/jobs/`) | ✅ |
-| Lưu ảnh / giấy tờ | S3 + CDN | **`multer` + ổ đĩa** (`backend/uploads/public` và `private`); đổi sang Cloudinary khi deploy ⏭️ | ✅ / ⏭️ |
+| Realtime | WebSocket/SSE + FCM | Socket.IO (`src/realtime/socket.js`) | ✅ |
+| Job hẹn giờ (timeout đơn, reset suất) | Message queue | node-cron (quét định kỳ trong cùng process, `src/jobs/`) | ✅ |
+| Lưu ảnh / giấy tờ | S3 + CDN | `multer` + ổ đĩa VPS (`backend/uploads/public` và `private`), sao lưu riêng ([CONFIG.md](CONFIG.md) mục 7) | ✅ |
 | Cache / khóa | Redis | Không dùng ở MVP — trừ tồn kho bằng update nguyên tử của MongoDB | ⏭️ |
 | Tìm kiếm | Elasticsearch | Field `nameNoAccent` + regex (tìm không dấu) | ✅ |
-| Thanh toán | VNPay/MoMo/ZaloPay | **COD** ở MVP; VNPay sandbox nếu còn thời gian | ⬜ / ⏭️ |
-| Frontend | — | React 18 + Vite + TypeScript + React Router 6 + Axios | ✅ (menu đọc từ API; đơn hàng còn lưu tạm) |
-| Test | — | **Jest + Supertest + mongodb-memory-server** (replica set trong RAM) — `cd backend && npm test` | ✅ |
-| CI | CI/CD | GitHub Actions: job `test` (gốc) + job `backend-test` | ✅ (job gốc cần sửa — xem mục 10) |
+| Thanh toán | VNPay/MoMo/ZaloPay | Tiền mặt (COD) + chuyển khoản VietQR, SePay webhook tự xác nhận; ví đối soát nội bộ | ✅ |
+| Frontend | — | React 18 + Vite + TypeScript + React Router 6 + Axios | ✅ (mọi dữ liệu đọc từ API) |
+| Test | — | Jest + Supertest + mongodb-memory-server (replica set trong RAM) — `cd backend && npm test` | ✅ |
+| CI | CI/CD | GitHub Actions: job `test` (gốc), `backend-test` (330 test), `frontend-build` (kiểm tra TypeScript + build) | ✅ |
 | Tài liệu API | OpenAPI | `swagger-jsdoc` + `swagger-ui-express` tại `/api/docs` | ⬜ |
 
 ---
@@ -477,7 +477,7 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 |---|---|---|---|
 | 5.1 | Test chức năng các luồng MVP (mục 9) | Checklist pass | 🟡 (test tự động cho phần đã làm) |
 | 5.2 | Bảo mật (phân quyền chéo quán, rate limit login), hiệu năng cơ bản | Không truy cập được dữ liệu quán khác | 🟡 (test chéo quán cho hồ sơ + menu ✅) |
-| 5.3 | Seed dữ liệu demo, deploy (Render/Railway + Atlas + Vercel), demo | Link chạy được | 🟡 (`npm run seed:demo` ✅, deploy ⬜) |
+| 5.3 | Seed dữ liệu demo, deploy lên VPS lab (thay cho Render/Railway + Atlas + Vercel), demo | Link chạy được | ✅ `https://sv22.bcse-vju.com` (chậm do VPS thiếu RAM — RISKS R1, [loadtest.md](loadtest.md)) |
 
 ### Sau MVP (theo docx)
 
@@ -542,7 +542,8 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 
 | Việc | Ghi chú |
 |---|---|
-| Lưu ảnh khi deploy | Ổ đĩa của Render/Railway không bền → đổi `upload.middleware.js` sang Cloudinary. |
+| VPS thiếu RAM | Chịu khoảng 60 request/phút; xin lab tăng RAM hoặc chuyển MongoDB sang Atlas (RISKS R1, [loadtest.md](loadtest.md)). |
+| Sao lưu dữ liệu | `mongodump` và sao lưu `backend/uploads/` trên VPS chưa chạy định kỳ ([CONFIG.md](CONFIG.md) mục 7). |
 | Swagger `/api/docs` | Thuộc API-10, chưa làm (rate limit + `helmet` ✅ 08/10). |
 
 ---
@@ -574,6 +575,7 @@ Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). M�
 | 20 — Tài xế MAK | 21/10/2026 | Chốt Q1–Q8 (Q8: ảnh xác nhận thay mã 4 số). Module `shipper/`: hồ sơ + giấy tờ + admin duyệt / khóa, trực tuyến / vị trí (lọc điểm vô lý), điều phối (`$near` + Goong Distance Matrix, mời 30 giây, tối đa 5 người / 3 phút, job 10 giây, `NO_SHIPPER` → quán tự giao / tìm lại), nhận đơn nguyên tử, tới quán → lấy hàng → ảnh giao, giao thất bại + admin xử lý, tài xế trả đơn (tạm ngưng khi hủy nhiều), gán tay, đánh giá tài xế; ví `SHIPPER` (tiền công, bù chuyến, rút tiền), `deliveryMode` của quán + chặn tiền mặt, migration 003, `npm run shipper:simulate`. FE: app tài xế `/shipper` (trực tuyến, lời mời đếm ngược, bản đồ, chụp ảnh, lịch sử, thu nhập, hồ sơ), theo dõi tài xế realtime cho khách + quán, nút hình thức giao, `/admin/shippers`, `/admin/dispatch` | 313 |
 | 21 — Đăng ký ca tài xế (giai đoạn A) | 22/10/2026 | Module `shift/`: hình thức giao "Theo lịch", lịch tuần + lịch ngày của quán, ca theo khu vực (khung cố định + tự chọn), job mỗi phút (14h hỏi, 18h chốt + gửi ca, 21h báo cáo, chốt 2 giờ trước, nhắc, vắng ca phút 30, kết thúc ca, giảm bậc), tài xế đăng ký / hủy ca (hủy sát giờ = vi phạm), ưu tiên tài xế trong ca khi điều phối, thang phạt có giảm bậc + audit log, trả 3 đơn liên tiếp → khóa 1 ngày, bắt buộc email cho tài xế, thông báo kèm email; sửa test cũ dễ lỗi (khách hủy / quán nhận cùng lúc). FE: `/owner/schedule`, tab "Ca làm" của tài xế (đăng ký ca, vi phạm, xác thực email), `/admin/shifts`, vi phạm + mở khóa ở chi tiết tài xế, khung tài xế MAK trên trang quán / thanh toán | 324 |
 | 22 — Đo kiểm tải + sửa nghẽn đặt đơn | 27/10/2026 | `npm run loadtest:orders` (trọn vòng đời đơn theo nhịp request, nhiều quán / món, in p50–p99 từng bước, `--cleanup`). Đo trên VPS: đặt đơn p50 114 giây, 7,8% lỗi 500 do `WriteConflict` (RISKS R1, R11). Sửa: mã đơn lấy ngoài transaction (chấp nhận nhảy số khi đặt thất bại), xung đột ghi trả 409 `SYSTEM_BUSY` thay vì 500. Kèm các thay đổi giao diện trước đó: số đỏ thông báo trên menu, sửa âm báo đơn đầu tiên, ảnh chân dung tài xế (BR-104), lọc trạng thái đơn | 330 |
+| 23 — Tài liệu quản lý dự án + phát hành v0.1.0 | 27/10 – 12/11/2026 | [loadtest.md](loadtest.md) (kết quả đo tải), [TEAM.md](TEAM.md) (RACI, luân phiên điều phối, quy ước giao tiếp), [SPRINT0-REPORT.md](SPRINT0-REPORT.md), [CONFIG.md](CONFIG.md) (quản lý cấu hình, SemVer, sao lưu), [STAKEHOLDERS.md](STAKEHOLDERS.md), [GIT.md](GIT.md) (nhánh, PR, tag), mẫu PR `.github/pull_request_template.md`; đồng bộ `version` các `package.json` về 0.1.0; gắn tag `v0.1.0`. Không đổi code | 330 |
 
 **Lệnh hay dùng (trong `backend/`):**
 

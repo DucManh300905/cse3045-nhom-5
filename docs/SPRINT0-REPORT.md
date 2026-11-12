@@ -1,6 +1,6 @@
 # Báo cáo hoàn thiện Sprint 0 — MAK Food and Drink
 
-> Nhóm 5, CSE3045. Ngày báo cáo: 27/10/2026. Người điều phối Sprint 0: An Đức Mạnh.
+> Nhóm 5, CSE3045. Ngày báo cáo: 27/10/2026, cập nhật 12/11/2026 (phân vai thực tế: Trương An làm frontend, Lương Minh Khánh làm Product Owner). Người điều phối Sprint 0: An Đức Mạnh.
 > Tài liệu liên quan: [scrum.md](scrum.md) (backlog Sprint 0 lập ở Buổi 4) · [TEAM.md](TEAM.md) · [project.md](project.md) · [RISKS.md](RISKS.md)
 
 Repo: https://github.com/DucManh300905/cse3045-nhom-5. Các đường dẫn `PR #n` và mã commit bên dưới đều trỏ vào repo này.
@@ -8,28 +8,28 @@ Repo: https://github.com/DucManh300905/cse3045-nhom-5. Các đường dẫn `PR 
 ## 1. Tóm tắt
 
 - **Mục tiêu Sprint 0:** có nền tảng kỹ thuật và bản MVP chạy được luồng *khách xem quán → đặt món → quán nhận đơn*.
-- **Kết quả:** **đạt.** 11/13 hạng mục xong (32/35 SP), 2 hạng mục đang dở (3 SP), không bỏ hạng mục nào.
+- **Kết quả:** **đạt.** 12/13 hạng mục xong (34/35 SP), 1 hạng mục đang dở (1 SP), không bỏ hạng mục nào.
 - **Ngoài backlog:** trong lúc chạy Sprint 0, nhóm làm thêm nhiều tính năng (voucher, VietQR, tài xế, ca làm…), xem mục 3. Đây cũng là điểm Retro cần rút kinh nghiệm (mục 4).
 
 ## 2. Trạng thái từng hạng mục backlog Sprint 0
 
 | # | Hạng mục | R | SP | Trạng thái | Bằng chứng |
 |---|---|---|---|---|---|
-| 1 | Chốt phạm vi MVP, 3 vai người dùng, luồng nghiệm thu | Trương An | 3 | Xong | [project.md](project.md) mục 1, 4, 9; thêm vào commit [ca234a5](https://github.com/DucManh300905/cse3045-nhom-5/commit/ca234a5), [PR #12](https://github.com/DucManh300905/cse3045-nhom-5/pull/12) |
-| 2 | Lập WBS và Gantt cho MVP | Trương An | 2 | Xong | `HW3/WBS food ordering.png`, `HW3/Gantt_MVP_he_thong_dat_mon.xlsx`; commit [7bb619e](https://github.com/DucManh300905/cse3045-nhom-5/commit/7bb619e), vào `develop` qua [PR #11](https://github.com/DucManh300905/cse3045-nhom-5/pull/11) |
+| 1 | Chốt phạm vi MVP, 3 vai người dùng, luồng nghiệm thu | Lương Minh Khánh | 3 | Xong | [project.md](project.md) mục 1, 4, 9; thêm vào commit [ca234a5](https://github.com/DucManh300905/cse3045-nhom-5/commit/ca234a5), [PR #12](https://github.com/DucManh300905/cse3045-nhom-5/pull/12) |
+| 2 | Lập WBS và Gantt cho MVP | Lương Minh Khánh | 2 | Xong | `HW3/WBS food ordering.png`, `HW3/Gantt_MVP_he_thong_dat_mon.xlsx`; commit [7bb619e](https://github.com/DucManh300905/cse3045-nhom-5/commit/7bb619e), vào `develop` qua [PR #11](https://github.com/DucManh300905/cse3045-nhom-5/pull/11) |
 | 3 | Repo GitHub, nhánh `main` / `develop` / `feature/*`, làm việc qua PR | Đức Mạnh | 1 | Xong | Nhánh `develop`, `feature/hw1`, `feature/HW4`, `feature/HW5`, `FP/*`; PR đầu tiên [PR #5](https://github.com/DucManh300905/cse3045-nhom-5/pull/5), tới nay đã có 25 PR |
-| 4 | Chọn tech stack, khởi tạo backend (Express + MongoDB) và frontend (React + Vite) | Đức Mạnh, Minh Khánh | 2 | Xong | Commit [384eac4](https://github.com/DucManh300905/cse3045-nhom-5/commit/384eac4), [PR #11](https://github.com/DucManh300905/cse3045-nhom-5/pull/11); [project.md](project.md) mục 2 |
+| 4 | Chọn tech stack, khởi tạo backend (Express + MongoDB) và frontend (React + Vite) | Đức Mạnh, Trương An | 2 | Xong | Commit [384eac4](https://github.com/DucManh300905/cse3045-nhom-5/commit/384eac4), [PR #11](https://github.com/DucManh300905/cse3045-nhom-5/pull/11); [project.md](project.md) mục 2 |
 | 5 | Thiết kế CSDL: người dùng, quán, thực đơn, đơn hàng | Đức Mạnh | 3 | Xong | [database.md](database.md); commit [ca234a5](https://github.com/DucManh300905/cse3045-nhom-5/commit/ca234a5), [PR #12](https://github.com/DucManh300905/cse3045-nhom-5/pull/12) |
 | 6 | Đặc tả API và mã lỗi | Đức Mạnh | 3 | Xong | [API.md](API.md); commit [ca234a5](https://github.com/DucManh300905/cse3045-nhom-5/commit/ca234a5), [PR #12](https://github.com/DucManh300905/cse3045-nhom-5/pull/12) |
-| 7 | Kiểm thử tự động + CI (Jest, GitHub Actions) | Đức Mạnh | 2 | Xong | `.github/workflows/ci.yml` chạy khi push / mở PR vào `develop`; commit [bbb66ba](https://github.com/DucManh300905/cse3045-nhom-5/commit/bbb66ba), [PR #11](https://github.com/DucManh300905/cse3045-nhom-5/pull/11). Hiện có 330 test backend |
-| 8 | Phác thảo giao diện khách → giao diện React | Minh Khánh | 5 | Xong | Bản HTML `HW1/index.html` ([PR #5](https://github.com/DucManh300905/cse3045-nhom-5/pull/5)); giao diện React [PR #11](https://github.com/DucManh300905/cse3045-nhom-5/pull/11), [PR #12](https://github.com/DucManh300905/cse3045-nhom-5/pull/12) |
-| 9 | Đăng ký, đăng nhập theo vai; mật khẩu mã hóa | Mạnh (API), Khánh (giao diện) | 3 | Xong | Module `backend/src/modules/auth`; commit [384eac4](https://github.com/DucManh300905/cse3045-nhom-5/commit/384eac4), [PR #11](https://github.com/DucManh300905/cse3045-nhom-5/pull/11); OTP email [PR #13](https://github.com/DucManh300905/cse3045-nhom-5/pull/13) |
-| 10 | Khách xem danh sách quán và thực đơn + dữ liệu mẫu | Mạnh, Khánh | 3 | Xong | `npm run seed:demo` (`backend/src/utils/seedDemo.js`); commit [ca234a5](https://github.com/DucManh300905/cse3045-nhom-5/commit/ca234a5), [PR #12](https://github.com/DucManh300905/cse3045-nhom-5/pull/12) |
-| 11 | Khách đặt món, trả tiền mặt khi nhận | Mạnh, Khánh | 5 | Xong | Giá do server tính, chặn đặt quá số suất (có test 5 khách tranh 1 suất); [PR #12](https://github.com/DucManh300905/cse3045-nhom-5/pull/12). Sửa nghẽn ghi khi tải cao: commit [67412e0](https://github.com/DucManh300905/cse3045-nhom-5/commit/67412e0), [PR #24](https://github.com/DucManh300905/cse3045-nhom-5/pull/24) |
-| 12 | Chuẩn bị demo: kịch bản, ảnh chụp, tài khoản demo | Trương An | 1 | **Đang dở** | Đã có kịch bản demo 3 phút và tài khoản demo ([scrum.md](scrum.md) mục 4, [PR #16](https://github.com/DucManh300905/cse3045-nhom-5/pull/16)). **Thiếu:** thư mục `docs/images/` chưa có ảnh; đường link `trycloudflare` trong kịch bản đã cũ, phải đổi sang `https://sv22.bcse-vju.com` |
-| 13 | Môi trường chạy thử trên VPS của lab | Đức Mạnh | 2 | **Đang dở** | Đã chạy tại `https://sv22.bcse-vju.com`. Đo tải ([loadtest.md](loadtest.md), [PR #25](https://github.com/DucManh300905/cse3045-nhom-5/pull/25)): chịu khoảng 60 request/phút, chậm hơn máy cá nhân 10–20 lần do thiếu RAM (RISKS R1). **Chưa đạt** "ổn định để demo" |
+| 7 | Kiểm thử tự động + CI (Jest, GitHub Actions) | Đức Mạnh | 2 | Xong | `.github/workflows/ci.yml` gồm 3 job (`test`, `backend-test`, `frontend-build`), chạy khi push / mở PR vào `develop`; commit [bbb66ba](https://github.com/DucManh300905/cse3045-nhom-5/commit/bbb66ba), [PR #11](https://github.com/DucManh300905/cse3045-nhom-5/pull/11). Hiện có 330 test backend |
+| 8 | Phác thảo giao diện khách → giao diện React | Trương An | 5 | Xong | Bản HTML `HW1/index.html` ([PR #5](https://github.com/DucManh300905/cse3045-nhom-5/pull/5)); giao diện React [PR #11](https://github.com/DucManh300905/cse3045-nhom-5/pull/11), [PR #12](https://github.com/DucManh300905/cse3045-nhom-5/pull/12) |
+| 9 | Đăng ký, đăng nhập theo vai; mật khẩu mã hóa | Mạnh (API), An (giao diện) | 3 | Xong | Module `backend/src/modules/auth`; commit [384eac4](https://github.com/DucManh300905/cse3045-nhom-5/commit/384eac4), [PR #11](https://github.com/DucManh300905/cse3045-nhom-5/pull/11); OTP email [PR #13](https://github.com/DucManh300905/cse3045-nhom-5/pull/13) |
+| 10 | Khách xem danh sách quán và thực đơn + dữ liệu mẫu | Mạnh, An | 3 | Xong | `npm run seed:demo` (`backend/src/utils/seedDemo.js`); commit [ca234a5](https://github.com/DucManh300905/cse3045-nhom-5/commit/ca234a5), [PR #12](https://github.com/DucManh300905/cse3045-nhom-5/pull/12) |
+| 11 | Khách đặt món, trả tiền mặt khi nhận | Mạnh, An | 5 | Xong | Giá do server tính, chặn đặt quá số suất (có test 5 khách tranh 1 suất); [PR #12](https://github.com/DucManh300905/cse3045-nhom-5/pull/12). Sửa nghẽn ghi khi tải cao: commit [67412e0](https://github.com/DucManh300905/cse3045-nhom-5/commit/67412e0), [PR #24](https://github.com/DucManh300905/cse3045-nhom-5/pull/24) |
+| 12 | Chuẩn bị demo: kịch bản, ảnh chụp, tài khoản demo | Lương Minh Khánh | 1 | **Đang dở** | Đã có kịch bản demo 3 phút và tài khoản demo ([scrum.md](scrum.md) mục 4, [PR #16](https://github.com/DucManh300905/cse3045-nhom-5/pull/16)). Đường link demo đã đổi sang `https://sv22.bcse-vju.com`. **Thiếu:** ảnh chụp màn hình (thư mục `docs/images/` chưa có) |
+| 13 | Môi trường chạy thử trên VPS của lab | Đức Mạnh | 2 | Xong | Đạt tiêu chí "truy cập được bằng đường link": `https://sv22.bcse-vju.com`. Hiệu năng còn thấp: đo tải ([loadtest.md](loadtest.md), [PR #25](https://github.com/DucManh300905/cse3045-nhom-5/pull/25)) chịu khoảng 60 request/phút, chậm hơn máy cá nhân 10–20 lần do thiếu RAM (RISKS R1); phần này tách thành việc mới S1-1 |
 
-**Tổng:** 35 SP. Xong 32 SP (91%). Đang dở 3 SP, chuyển sang Sprint 1. Bỏ 0 SP.
+**Tổng:** 35 SP. Xong 34 SP (97%). Đang dở 1 SP (hạng mục 12), chuyển sang Sprint 1. Bỏ 0 SP.
 
 ## 3. Việc làm thêm ngoài backlog Sprint 0
 
@@ -64,14 +64,14 @@ Các việc này không có trong backlog lập ở Buổi 4 nhưng đã đượ
 
 | # | Product Backlog Item | R | A | SP | Tiêu chí hoàn thành | Hạn |
 |---|---|---|---|---|---|---|
-| S1-1 | Ổn định VPS: xin lab tăng RAM, hoặc chuyển MongoDB sang Atlas; đo lại 100 request/phút (hạng mục 13 chuyển sang; RISKS R1) | Đức Mạnh | Trương An | 3 | Bước "Đặt đơn" có p95 dưới 2 giây ở mức 60 request/phút trở lên; kết quả ghi vào [loadtest.md](loadtest.md) | 31/10 |
-| S1-2 | Kiểm thử thủ công 7 luồng nghiệm thu trên `https://sv22.bcse-vju.com` | Trương An | Đức Mạnh | 3 | Checklist pass đủ 7 luồng; mỗi lỗi tìm được có một issue | 31/10 |
-| S1-3 | Sửa lỗi giao diện phát hiện ở S1-2, kiểm tra hiển thị trên điện thoại | Minh Khánh | Đức Mạnh | 3 | Mọi issue lỗi mức cao đã đóng bằng PR | 01/11 |
-| S1-4 | Rà soát bảo mật: phân quyền chéo giữa các quán cho đơn, voucher, tài xế; đổi mật khẩu Gmail (SMTP) và các khóa trên VPS (RISKS R2) | Đức Mạnh | Minh Khánh | 2 | Có test "quán A không đọc / sửa được dữ liệu quán B" cho các module mới; khóa cũ hết hiệu lực | 01/11 |
-| S1-5 | Hoàn tất chuẩn bị demo: ảnh chụp vào `docs/images/`, cập nhật đường link trong kịch bản (hạng mục 12 chuyển sang) | Trương An | Minh Khánh | 1 | [scrum.md](scrum.md) mục 4 hiện đủ 6 ảnh, link đúng | 01/11 |
-| S1-6 | Mỗi thành viên tự chạy dự án và tự demo trọn luồng nghiệm thu (RISKS R7) | Cả nhóm, mỗi người tự làm phần của mình | Lương Minh Khánh (điều phối) | 2 | Mỗi người demo được một lần trong buổi họp ngày 30/10 | 30/10 |
-| S1-7 | Slide và báo cáo cuối kỳ | Trương An | Minh Khánh | 3 | Slide đúng kịch bản demo; báo cáo dẫn link tới `docs/` | 02/11 |
-| S1-8 | Cập nhật tài liệu sau phát hành: nhật ký tiến độ ([project.md](project.md) mục 11), RISKS, báo cáo Sprint 1 | Đức Mạnh | Trương An | 1 | Tài liệu khớp với bản đã phát hành | 03/11 |
+| S1-1 | Ổn định VPS: xin lab tăng RAM, hoặc chuyển MongoDB sang Atlas; đo lại 100 request/phút (việc tiếp theo của hạng mục 13; RISKS R1) | Đức Mạnh | Lương Minh Khánh | 3 | Bước "Đặt đơn" có p95 dưới 2 giây ở mức 60 request/phút trở lên; kết quả ghi vào [loadtest.md](loadtest.md) | 31/10 |
+| S1-2 | Kiểm thử thủ công 7 luồng nghiệm thu trên `https://sv22.bcse-vju.com` | Lương Minh Khánh | Đức Mạnh | 3 | Checklist pass đủ 7 luồng; mỗi lỗi tìm được có một issue | 31/10 |
+| S1-3 | Sửa lỗi giao diện phát hiện ở S1-2, kiểm tra hiển thị trên điện thoại | Trương An | Đức Mạnh | 3 | Mọi issue lỗi mức cao đã đóng bằng PR | 01/11 |
+| S1-4 | Rà soát bảo mật: phân quyền chéo giữa các quán cho đơn, voucher, tài xế; đổi mật khẩu Gmail (SMTP) và các khóa trên VPS (RISKS R2) | Đức Mạnh | Trương An | 2 | Có test "quán A không đọc / sửa được dữ liệu quán B" cho các module mới; khóa cũ hết hiệu lực | 01/11 |
+| S1-5 | Hoàn tất chuẩn bị demo: ảnh chụp vào `docs/images/`, cập nhật đường link trong kịch bản (hạng mục 12 chuyển sang) | Lương Minh Khánh | Trương An | 1 | [scrum.md](scrum.md) mục 4 hiện đủ 6 ảnh, link đúng | 01/11 |
+| S1-6 | Mỗi thành viên tự chạy dự án và tự demo trọn luồng nghiệm thu (RISKS R7) | Cả nhóm, mỗi người tự làm phần của mình | Lương Minh Khánh (PO) | 2 | Mỗi người demo được một lần trong buổi họp ngày 30/10 | 30/10 |
+| S1-7 | Slide và báo cáo cuối kỳ | Lương Minh Khánh | Trương An | 3 | Slide đúng kịch bản demo; báo cáo dẫn link tới `docs/` | 02/11 |
+| S1-8 | Cập nhật tài liệu sau phát hành: nhật ký tiến độ ([project.md](project.md) mục 11), RISKS, báo cáo Sprint 1 | Đức Mạnh | Lương Minh Khánh | 1 | Tài liệu khớp với bản đã phát hành | 03/11 |
 
 **Tổng Sprint 1:** 18 SP. Sprint 0 làm được 32 SP trong backlog, nhưng Sprint 1 chỉ có 1 tuần và chủ yếu là kiểm thử, sửa lỗi, nên nhóm chủ động nhận ít hơn để giữ hạn MVP.
 
