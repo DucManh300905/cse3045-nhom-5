@@ -11,12 +11,12 @@ Bản kế hoạch rút gọn, trả lời 7 câu hỏi của quản lý cấu h
 |---|---|---|---|
 | CI-01 | Mã nguồn backend | `backend/src/`, `backend/package.json`, `backend/package-lock.json` | Có |
 | CI-02 | Mã nguồn frontend | `frontend/src/`, `frontend/public/`, `frontend/package.json`, `frontend/package-lock.json`, `vite.config.ts` | Có |
-| CI-03 | Test tự động | `backend/tests/` (330 test), `HW3/tests/` | Có |
+| CI-03 | Test tự động | `backend/tests/` (330 test), `frontend/src/**/*.test.ts` (25 test Vitest) | Có |
 | CI-04 | Migration và script dữ liệu | `backend/src/utils/migrations/001…003`, `seedDemo.js`, `seeAdmin.js`, `loadTestOrders.js` | Có |
 | CI-05 | Cấu hình CI | `.github/workflows/ci.yml` | Có |
 | CI-06 | Mẫu biến môi trường | `backend/.env.example`, `frontend/.env.example` (chỉ tên biến và giá trị mẫu) | Có |
 | CI-07 | Tài liệu đặc tả và quản lý | `docs/*.md`, `README.md`, `Requirements.md` | Có |
-| CI-08 | Kế hoạch | `HW3/WBS food ordering.png`, `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` | Có |
+| CI-08 | Kế hoạch | [WBS.md](WBS.md), [GANTT.md](GANTT.md), [CHARTER.md](CHARTER.md) (bản gốc `HW3/*.png`, `*.xlsx` bị `.gitignore` chặn) | Có |
 | CI-09 | Biến môi trường thật (mật khẩu, khóa API) | `backend/.env` trên VPS và trên máy mỗi người | **Không**, bị chặn bởi `.gitignore` (RISKS R2) |
 | CI-10 | Dữ liệu MongoDB | MongoDB trên VPS (replica set 1 node) | **Không**, sao lưu riêng (mục 7) |
 | CI-11 | File người dùng tải lên (giấy tờ quán, ảnh giao hàng, ảnh chân dung tài xế) | `backend/uploads/` trên VPS | **Không**, bị chặn bởi `.gitignore`, sao lưu riêng (mục 7) |
@@ -46,11 +46,12 @@ Theo bảng RACI trong [TEAM.md](TEAM.md):
 | Triển khai | `git pull` trên VPS, pm2 giữ backend chạy |
 | Sao lưu dữ liệu | `mongodump` / `mongorestore`, `tar` |
 
-**CI hiện tại** (`.github/workflows/ci.yml`) có 3 job, chạy khi push lên `develop` / `feat/**` và khi mở PR vào `develop`:
-- `test`: test ở thư mục gốc (`HW3/tests`);
+**CI hiện tại** (`.github/workflows/ci.yml`) có 4 job, chạy khi push lên `develop` / `feat/**` / `feature/**` / `fix/**` / `docs/**` / `hotfix/**` và khi mở PR vào `develop` hoặc `main`:
+- `test`: test ở thư mục gốc (`npm test`, `--passWithNoTests`);
 - `backend-test`: 330 test backend, có cache binary MongoDB;
+- `frontend-test`: 25 test đơn vị frontend bằng Vitest (giỏ hàng, thông báo lỗi API, tiện ích giao hàng, số đỏ menu);
 - `frontend-build`: kiểm tra TypeScript và build frontend.
-- (Chưa làm) Thêm `main` và các tiền tố nhánh mới (`feature/**`, `fix/**`, `hotfix/**`, `docs/**`, theo [GIT.md](GIT.md)) vào điều kiện chạy CI. Hiện PR vào `main` và push lên các nhánh này chưa kích hoạt CI.
+- (Đã làm, HW3) Thêm `main` và các tiền tố nhánh theo [GIT.md](GIT.md) vào điều kiện chạy CI.
 
 ## 4. Điểm mốc (baseline)
 
