@@ -37,7 +37,7 @@ Repo đã chạy trên MongoDB/Express/React:
 | Thanh toán | VNPay/MoMo/ZaloPay | Tiền mặt (COD) + chuyển khoản VietQR, SePay webhook tự xác nhận; ví đối soát nội bộ | ✅ |
 | Frontend | — | React 18 + Vite + TypeScript + React Router 6 + Axios | ✅ (mọi dữ liệu đọc từ API) |
 | Test | — | Jest + Supertest + mongodb-memory-server (replica set trong RAM) — `cd backend && npm test` | ✅ |
-| CI | CI/CD | GitHub Actions: job `test` (gốc), `backend-test` (330 test), `frontend-build` (kiểm tra TypeScript + build) | ✅ |
+| CI | CI/CD | GitHub Actions: job `test` (gốc), `backend-test` (330 test), `frontend-test` (Vitest), `frontend-build` (kiểm tra TypeScript + build) | ✅ |
 | Tài liệu API | OpenAPI | `swagger-jsdoc` + `swagger-ui-express` tại `/api/docs` | ⬜ |
 
 ---
@@ -431,7 +431,7 @@ Chi tiết schema, index, ràng buộc: xem **[database.md](database.md)**.
 
 ## 8. Lộ trình thực hiện tổng thể
 
-Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026). Mỗi bước có **đầu ra kiểm chứng được** — xong đầu ra mới sang bước sau.
+Bám theo Gantt `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` (03/10 → 02/11/2026), bản dựng lại trong Git: [GANTT.md](GANTT.md); phân rã công việc: [WBS.md](WBS.md). Mỗi bước có **đầu ra kiểm chứng được** — xong đầu ra mới sang bước sau.
 
 > **Tiến độ thực tế:** phần backend của P3.0 → P3.3 đã xong sớm (06/10, trước kế hoạch 13–19/10). Frontend phía khách đã nối API menu, sổ địa chỉ, đổi mật khẩu (06/10); trang `/owner/*`, `/admin/*` chưa làm.
 

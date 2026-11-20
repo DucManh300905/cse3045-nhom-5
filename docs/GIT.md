@@ -72,7 +72,7 @@ git push -u origin feature/ten-viec                   # 5. đẩy nhánh lên, m
    - tài liệu đã cập nhật;
    - lệnh migration hoặc biến `.env` mới, nếu có.
 4. **Điều kiện để merge:**
-   - CI xanh cả 3 job `test`, `backend-test`, `frontend-build` ([CONFIG.md](CONFIG.md) mục 3). PR vào `main` hiện chưa kích hoạt CI, nên chỉ merge `develop` vào `main` khi commit cuối trên `develop` đã xanh;
+   - CI xanh cả 4 job `test`, `backend-test`, `frontend-test`, `frontend-build` ([CONFIG.md](CONFIG.md) mục 3). PR vào `main` cũng kích hoạt CI;
    - ít nhất **1 người duyệt** là người A của mảng đó trong RACI, không tự duyệt PR của chính mình;
    - tài liệu `docs/` liên quan đã được cập nhật trong cùng PR.
 5. **Kích thước:** nên dưới khoảng 400 dòng thay đổi. PR lớn hơn thì chia nhỏ, hoặc ghi rõ thứ tự đọc trong mô tả.

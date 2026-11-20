@@ -43,7 +43,7 @@ SP là story point ước lượng độ khó tương đối. ✅ là đã hoàn
 | # | Hạng mục / User story | Người phụ trách | SP | Tiêu chí hoàn thành | Trạng thái |
 |---|---|---|---|---|---|
 | 1 | Chốt phạm vi MVP, 3 vai người dùng, luồng nghiệm thu | Lương Minh Khánh | 3 | Có danh sách tính năng MVP và luồng nghiệm thu ([project.md](project.md)) | ✅ |
-| 2 | Lập WBS và Gantt cho MVP | Lương Minh Khánh | 2 | `HW3/WBS food ordering.png`, `HW3/Gantt_MVP_he_thong_dat_mon.xlsx` | ✅ |
+| 2 | Lập WBS và Gantt cho MVP | Lương Minh Khánh | 2 | [WBS.md](WBS.md), [GANTT.md](GANTT.md) (bản gốc trong `HW3/`) | ✅ |
 | 3 | Tạo repo GitHub, quy ước nhánh `main` / `develop` / `feature/*`, làm việc qua Pull Request | Đức Mạnh | 1 | Mọi thay đổi vào `develop` đều qua PR | ✅ |
 | 4 | Chọn tech stack, khởi tạo backend (Express + MongoDB) và frontend (React + Vite) | Đức Mạnh, Trương An | 2 | Cả hai chạy được trên máy bằng `npm run dev` | ✅ |
 | 5 | Thiết kế cơ sở dữ liệu: người dùng, quán, thực đơn, đơn hàng | Đức Mạnh | 3 | [database.md](database.md) | ✅ |
@@ -87,7 +87,7 @@ Chưa có ảnh (thư mục `docs/images/` chưa được tạo), làm ở Sprin
 | 5 | "Đơn của tôi" phía khách: thanh tiến trình trạng thái đơn, ảnh tài xế | `images/05-theo-doi-don.png` |
 | 6 | Trang quản trị: duyệt hồ sơ quán | `images/06-admin-duyet-quan.png` |
 
-Kế hoạch: ![WBS](../HW3/WBS%20food%20ordering.png)
+Kế hoạch: [WBS.md](WBS.md) · [GANTT.md](GANTT.md) · [CHARTER.md](CHARTER.md)
 
 ### Kịch bản demo 3 phút
 
