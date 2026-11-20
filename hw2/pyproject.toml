@@ -1,0 +1,23 @@
+[project]
+name = "mak-dsa"
+version = "0.1.0"
+description = "HW2 - Cau truc du lieu va Python nang cao cho nghiep vu MAK Food and Drink"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
