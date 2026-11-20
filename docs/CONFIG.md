@@ -58,7 +58,8 @@ Mỗi điểm mốc là một **tag Git dạng SemVer** đặt trên nhánh `mai
 
 | Tag | Mốc | Nội dung |
 |---|---|---|
-| **v0.1.0** | Sprint 1 (hiện tại) | Bản MVP: khách đặt món (tiền mặt hoặc VietQR qua SePay), quán nhận và xử lý đơn, admin duyệt quán, voucher, tài xế MAK, đăng ký ca tài xế, sửa nghẽn ghi khi đặt đơn (R11), tài liệu quản lý dự án. Trùng với `develop` sau PR có tài liệu này |
+| v0.1.0 | Sprint 1 | Gắn nhầm vào commit `main` ngày 24/10, thiếu tài liệu quản lý dự án; không dùng, xem v0.1.1 ([GIT.md](GIT.md) mục 5) |
+| **v0.1.1** | Sprint 1 (hiện tại) | Bản MVP: khách đặt món (tiền mặt hoặc VietQR qua SePay), quán nhận và xử lý đơn, admin duyệt quán, voucher, tài xế MAK, đăng ký ca tài xế, sửa nghẽn ghi khi đặt đơn (R11), tài liệu quản lý dự án. Trỏ tới `c2fc75c`, commit merge PR #29 `develop` → `main` |
 | v0.2.0 | Cuối Sprint 2 (dự kiến) | VPS ổn định (R1), kiểm thử thủ công đủ 7 luồng nghiệm thu, CI chạy test backend |
 | v1.0.0 | Bản nộp cuối kỳ / bảo vệ | Bản được giảng viên nghiệm thu |
 

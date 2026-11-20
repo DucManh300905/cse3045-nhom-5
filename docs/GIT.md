@@ -102,6 +102,9 @@ Số phiên bản theo SemVer ([CONFIG.md](CONFIG.md) mục 5). Các bước:
 
 | Tag | Ngày | Mốc | Commit |
 |---|---|---|---|
-| v0.1.0 | 12/11/2026 | Sprint 1: bản MVP + tài liệu quản lý dự án | Commit merge của PR `release: v0.1.0` trên `main` |
+| v0.1.0 | 12/11/2026 | Sprint 1: bản MVP + tài liệu quản lý dự án | **Gắn nhầm** vào `261371c` (merge PR #22 ngày 24/10, `main` trên máy chưa `git pull`), thiếu `CONFIG.md`, `STAKEHOLDERS.md`, `GIT.md`. Giữ nguyên theo quy tắc bên dưới, thay bằng v0.1.1 |
+| v0.1.1 | 20/11/2026 | Sửa tag v0.1.0: cùng nội dung Sprint 1, gắn đúng commit phát hành | `c2fc75c` (merge [PR #29](https://github.com/DucManh300905/cse3045-nhom-5/pull/29) `develop` → `main`) |
 
 **Không bao giờ** xóa hoặc di chuyển một tag đã đẩy lên. Nếu gắn nhầm thì phát hành bản PATCH mới.
+
+Trước khi gắn tag, luôn `git checkout main && git pull origin main` rồi kiểm tra `git log -1` là commit merge của PR phát hành (bài học từ v0.1.0).
